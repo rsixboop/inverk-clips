@@ -51,15 +51,15 @@ export function Studio({ userId }: { userId: string }) {
   const addUrl = useServerFn(addUrlSource);
 
   async function upload(file: File) {
-    if (!/^video\/(mp4|quicktime)$/.test(file.type)) return toast.error("Нужен MP4 или MOV");
-    if (file.size > 200 * 1024 * 1024) return toast.error("Максимум 200 МБ");
+    if (!/^video\/(mp4|quicktime)$/.test(file.type)) { toast.error("Нужен MP4 или MOV"); return; }
+    if (file.size > 200 * 1024 * 1024) { toast.error("Максимум 200 МБ"); return; }
     setBusy("upload");
     const path = `${userId}/${crypto.randomUUID()}.${file.type === "video/mp4" ? "mp4" : "mov"}`;
     const { error } = await supabase.storage.from("footage").upload(path, file, { contentType: file.type });
-    if (error) { setBusy(null); return toast.error(error.message); }
+    if (error) { setBusy(null); toast.error(error.message); return; }
     const { data, error: e2 } = await supabase.from("sources").insert({ user_id: userId, kind: "upload", storage_path: path, title: file.name, mime: file.type, bytes: file.size, permission }).select("id").single();
     setBusy(null);
-    if (e2) return toast.error(e2.message);
+    if (e2) { toast.error(e2.message); return; }
     setSourceId(data.id); qc.invalidateQueries({ queryKey: ["sources"] }); toast.success("Видео загружено");
   }
   async function attachUrl() {
@@ -114,7 +114,7 @@ export function Studio({ userId }: { userId: string }) {
           <Seg value={audioMode} onChange={setAudioMode} items={[{ key: "voiceover", label: "ИИ-озвучка" }, { key: "original", label: "Оригинал" }] as const} /></div>
         <div className="space-y-2">
           <div className="flex justify-between"><span className="label-xs">Длительность</span><span className="font-mono text-xs text-primary">{seconds} с</span></div>
-          <Slider min={15} max={90} step={5} value={[seconds]} onValueChange={(v) => setSeconds(v[0])} />
+          <Slider min={15} max={90} step={5} value={[seconds]} onValueChange={(v) => setSeconds(v[0] ?? 40)} />
         </div>
         <label className="flex items-center justify-between text-xs"><span>Проверить сценарий перед рендером</span><Switch checked={review} onCheckedChange={setReview} /></label>
         <Button onClick={submit} disabled={busy === "create" || !prompt.trim()} className="glow mt-auto">
@@ -176,7 +176,7 @@ export function JobDetails({ job }: { job: Job }) {
   const plan = (job.plan ?? {}) as any;
   const stageIdx = useMemo(() => STAGES.findIndex((s) => s.key === job.stage), [job.stage]);
 
-  async function run(action: Parameters<typeof act>[0]["data"]["action"]) {
+  async function run(action: "cancel" | "pause" | "resume" | "retry" | "regenerate" | "approve" | "rerender") {
     try { await act({ data: { jobId: job.id, action } }); qc.invalidateQueries({ queryKey: ["jobs"] }); qc.invalidateQueries({ queryKey: ["events"] }); }
     catch (e) { toast.error((e as Error).message); }
   }

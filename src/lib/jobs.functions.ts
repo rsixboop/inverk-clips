@@ -57,9 +57,9 @@ export const jobAction = createServerFn({ method: "POST" }).middleware([requireS
         Object.assign(upd, { status: "cancelled", finished_at: now });
         msg = job.render_id && job.stage === "render_wait" ? "Отменено. Shotstack не поддерживает отмену — начатый рендер может доиграть у провайдера, но результат не будет использован." : "Отменено пользователем"; break;
       case "pause": if (!["queued", "running"].includes(job.status)) throw new Error("Нечего ставить на паузу");
-        upd.status = "paused"; msg = "Пауза"; break;
+        upd["status"] = "paused"; msg = "Пауза"; break;
       case "resume": if (job.status !== "paused") throw new Error("Задача не на паузе");
-        upd.status = "running"; msg = "Продолжено"; break;
+        upd["status"] = "running"; msg = "Продолжено"; break;
       case "retry": if (!["failed", "blocked", "cancelled"].includes(job.status)) throw new Error("Повтор доступен только после ошибки/блокировки/отмены");
         Object.assign(upd, { status: "running", stage: job.failed_stage ?? job.stage, error: null, attempts: 0, finished_at: null });
         msg = `Повтор шага «${job.failed_stage ?? job.stage}»${job.render_id ? " (существующий рендер не дублируется)" : ""}`; break;
