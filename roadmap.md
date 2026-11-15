@@ -5,5 +5,5 @@
 - [x] Background tick every 2 min (published app only), single-worker lease
 - [x] Replace active providers with fal.ai + Atlas Cloud + Tavily; preserve legacy history without paid replay
 - [x] Verify queue adapters, content-aware selection, vertical composition and captions with regression fixtures
-- [ ] Deliver one 12–20s original stylized gaming meme under the existing owner's account, within $6 fal budget
-- [ ] Verify real MP4, authenticated Library playback and download
+- [x] Deliver one 16s original stylized gaming meme under the existing owner's account; fal tariff estimate $0.018, supervised motion-render import
+- [x] Verify real 1080×1920 H.264/AAC MP4, authenticated Library playback and download; desktop/mobile checked
