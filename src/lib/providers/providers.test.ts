@@ -1,68 +1,73 @@
-// Fixture tests (provider responses copied from official docs shapes) — NOT live calls.
+// FIXTURE tests using documented response shapes; no live calls.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildSubmit, parseQuery, parseSubmit, preferLength, vizardSubmit } from "./vizard";
+import { FAL, falSubmit, falPoll, queueBase, scaleInput, captionInput, validMoments } from "./fal";
+import { atlasSubmit, atlasPoll, parsePrediction, ttsInput, ATLAS_TTS, imageInput } from "./atlas";
 import { parseTavily, tavilySearch } from "./tavily";
-import { parsePexels } from "./pexels";
-import { ProviderError, providerFetch } from "./http";
-
+import { providerFetch } from "./http";
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
-
-describe("vizard adapter", () => {
-  it("maps target length to documented preferLength", () => {
-    expect(preferLength(25)).toEqual([1]); expect(preferLength(40)).toEqual([2]); expect(preferLength(75)).toEqual([3]);
+const response = (data: unknown) => new Response(JSON.stringify(data));
+describe("fal and Atlas adapters (fixtures)", () => {
+  it("missing FAL_KEY blocks without a network request", async () => {
+    vi.stubEnv("FAL_KEY", ""); const f = vi.fn(); vi.stubGlobal("fetch", f);
+    await expect(falSubmit(FAL.whisper, {})).rejects.toThrow("FAL_KEY"); expect(f).not.toHaveBeenCalled();
   });
-  it("YouTube uses videoType 2 without ext; direct file uses 1 with ext; Twitch 9", () => {
-    const yt = buildSubmit({ url: "https://youtu.be/x", kind: "youtube", lang: "en", seconds: 40, keywords: "gta", name: "n" });
-    expect(yt).toMatchObject({ videoType: 2, ratioOfClip: 1, subtitleSwitch: 1, lang: "en" });
-    expect("ext" in yt).toBe(false);
-    expect(buildSubmit({ url: "https://a/b.mp4", kind: "direct_url", lang: "en", seconds: 40, keywords: "", name: "n" })).toMatchObject({ videoType: 1, ext: "mp4" });
-    expect(buildSubmit({ url: "https://twitch.tv/videos/1", kind: "twitch", lang: "ru", seconds: 40, keywords: "", name: "n" }).videoType).toBe(9);
+  it("missing ATLAS_CLOUD_API_KEY blocks without a network request", async () => {
+    vi.stubEnv("ATLAS_CLOUD_API_KEY", ""); const f = vi.fn(); vi.stubGlobal("fetch", f);
+    await expect(atlasSubmit(ATLAS_TTS, ttsInput("Hello"))).rejects.toThrow("ATLAS_CLOUD_API_KEY"); expect(f).not.toHaveBeenCalled();
   });
-  it("parses processing / done / error", () => {
-    expect(parseQuery({ code: 1000 })).toEqual({ state: "processing" });
-    const done = parseQuery({ code: 2000, videos: [{ videoId: 1, videoUrl: "https://cdn/x.mp4", videoMsDuration: 41000, title: "T", transcript: "hi", viralScore: "8" }] });
-    expect(done.state).toBe("done");
-    if (done.state === "done") expect(done.clips[0]).toMatchObject({ durationS: 41, viralScore: 8 });
-    expect(() => parseQuery({ code: 4007 })).toThrow(/закончилось время/);
-    expect(parseSubmit({ code: 2000, projectId: 17861706 })).toBe("17861706");
+  it("fal queue uses submit subpath but app-level status/result paths", async () => {
+    vi.stubEnv("FAL_KEY", "fixture-only");
+    const f = vi.fn().mockResolvedValueOnce(response({ request_id: "r1" })).mockResolvedValueOnce(response({ status: "IN_QUEUE" })).mockResolvedValueOnce(response({ status: "COMPLETED" })).mockResolvedValueOnce(response({ video: { url: "https://v3b.fal.media/out.mp4" } })); vi.stubGlobal("fetch", f);
+    expect(await falSubmit(FAL.trim, { video_url: "u" })).toBe("r1");
+    expect(await falPoll(FAL.trim, "r1")).toEqual({ state: "processing" });
+    expect((await falPoll(FAL.trim, "r1")).state).toBe("done");
+    expect(f.mock.calls.map((c) => c[0])).toEqual(["https://queue.fal.run/fal-ai/workflow-utilities/trim-video", "https://queue.fal.run/fal-ai/workflow-utilities/requests/r1/status", "https://queue.fal.run/fal-ai/workflow-utilities/requests/r1/status", "https://queue.fal.run/fal-ai/workflow-utilities/requests/r1"]);
+    expect(() => queueBase("untrusted/model")).toThrow();
   });
-  it("rate limit is retryable, invalid key is not", () => {
-    try { parseQuery({ code: 4003 }); } catch (e) { expect((e as ProviderError).retryable).toBe(true); }
-    try { parseQuery({ code: 4001 }); } catch (e) { expect((e as ProviderError).retryable).toBe(false); }
+  it("Atlas submits asynchronous TTS and polls prediction", async () => {
+    vi.stubEnv("ATLAS_CLOUD_API_KEY", "fixture-only");
+    const f = vi.fn().mockResolvedValueOnce(response({ data: { id: "p1", status: "processing" } })).mockResolvedValueOnce(response({ data: { status: "completed", outputs: ["https://media.example/audio.wav"] } })); vi.stubGlobal("fetch", f);
+    expect(await atlasSubmit(ATLAS_TTS, ttsInput("Hello"))).toBe("p1");
+    expect(await atlasPoll(ATLAS_TTS, "p1")).toEqual({ state: "done", result: { url: "https://media.example/audio.wav" } });
+    expect(f.mock.calls[0]?.[0]).toBe("https://api.atlascloud.ai/api/v1/model/generateAudio");
+    expect(f.mock.calls[1]?.[0]).toBe("https://api.atlascloud.ai/api/v1/model/prediction/p1");
   });
-  it("absent key blocks without any network call", async () => {
-    const f = vi.fn(); vi.stubGlobal("fetch", f); vi.stubEnv("VIZARD_API_KEY", "");
-    await expect(vizardSubmit(buildSubmit({ url: "u", kind: "youtube", lang: "en", seconds: 40, keywords: "", name: "n" }))).rejects.toThrow(/Не подключено/);
-    expect(f).not.toHaveBeenCalled();
+  it("Atlas handles processing, failed and private outputs", () => {
+    expect(parsePrediction({ data: { status: "processing" } })).toEqual({ state: "processing" });
+    expect(() => parsePrediction({ data: { status: "failed" } })).toThrow();
+    expect(() => parsePrediction({ data: { status: "completed", outputs: ["https://127.0.0.1/private"] } })).toThrow();
+  });
+  it("vertical output requests exactly 1080x1920 H264 without stretching", () => {
+    expect(scaleInput("u")).toMatchObject({ width: 1080, height: 1920, mode: "crop", codec: "libx264" });
+  });
+  it("subtitle language keeps EN RU UK and a safe vertical offset", () => {
+    for (const language of ["en", "ru", "uk"]) expect(captionInput("u", language)).toMatchObject({ language, y_offset: -260, words_per_subtitle: 3 });
+  });
+  it("TTS preserves script and uses documented economical model", () => {
+    expect(ttsInput("Привіт")).toEqual({ model: "google/gemini-2.5-flash-tts", text: "Привіт", voice: "Kore" });
+    expect(imageInput("illustration")).toMatchObject({ aspect_ratio: "9:16", enable_sync_mode: false });
+  });
+  it("moments cannot exceed video bounds or requested duration", () => {
+    expect(validMoments([{ start: 40, durationS: 30 }, { start: -1, durationS: 5 }, { start: 0, durationS: 90 }], 50, 20).map((m) => [m.start, m.durationS])).toEqual([[40,10],[0,20]]);
   });
 });
-
-describe("http", () => {
-  it("network failure is ambiguous (never auto-resubmitted)", async () => {
+describe("safe provider failures and research (fixtures)", () => {
+  it("network timeout and submission 500 have unknown outcomes", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("reset")));
     await expect(providerFetch("X", "https://x")).rejects.toMatchObject({ ambiguous: true });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("private data", { status: 500 })));
+    await expect(providerFetch("X", "https://x", { method: "POST" })).rejects.toMatchObject({ ambiguous: true });
   });
-  it("500 is retryable, 400 is not", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("err", { status: 500 })));
-    await expect(providerFetch("X", "https://x")).rejects.toMatchObject({ retryable: true, ambiguous: false });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("bad", { status: 400 })));
-    await expect(providerFetch("X", "https://x")).rejects.toMatchObject({ retryable: false });
+  it("400 is not retryable and does not expose response body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("private data", { status: 400 })));
+    await expect(providerFetch("X", "https://x")).rejects.toMatchObject({ retryable: false, ambiguous: false });
+    await expect(providerFetch("X", "https://x")).rejects.not.toThrow("private data");
   });
-});
-
-describe("tavily + pexels", () => {
-  it("keeps only real http(s) result URLs", () => {
-    expect(parseTavily({ results: [{ title: "a", url: "https://rockstargames.com/x", content: "c", score: 0.9 }, { title: "b", url: "javascript:1" }] })).toHaveLength(1);
+  it("retains real research URLs, never javascript", () => {
+    expect(parseTavily({ results: [{ title: "Fact", url: "https://rockstargames.com", content: "source" }, { url: "javascript:1" }] })).toHaveLength(1);
   });
-  it("sends bearer auth", async () => {
-    const f = vi.fn().mockResolvedValue(new Response(JSON.stringify({ results: [] })));
-    vi.stubGlobal("fetch", f); vi.stubEnv("TAVILY_API_KEY", "k");
-    await tavilySearch("gta");
-    expect((f.mock.calls[0] as any)[1].headers.Authorization).toBe("Bearer k");
-  });
-  it("picks the smallest mp4 that is still >=1080 short side", () => {
-    const [c] = parsePexels({ videos: [{ id: 5, url: "https://www.pexels.com/video/night-city-5/", image: "i", duration: 12, user: { name: "A" },
-      video_files: [{ link: "s", width: 540, height: 960, file_type: "video/mp4" }, { link: "hd", width: 1080, height: 1920, file_type: "video/mp4" }, { link: "4k", width: 2160, height: 3840, file_type: "video/mp4" }] }] });
-    expect(c).toMatchObject({ fileUrl: "hd", title: "night city", duration: 12 });
+  it("research sends bearer authorization", async () => {
+    vi.stubEnv("TAVILY_API_KEY", "fixture-only"); const f = vi.fn().mockResolvedValue(response({ results: [] })); vi.stubGlobal("fetch", f);
+    await tavilySearch("GTA"); expect((f.mock.calls[0] as any)[1].headers.Authorization).toBe("Bearer fixture-only");
   });
 });
