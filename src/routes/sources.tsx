@@ -15,7 +15,7 @@ export const Route = createFileRoute("/sources")({
   component: () => <AppShell>{() => <Sources />}</AppShell>,
 });
 
-const KIND: Record<string, string> = { upload: "Загруженный файл", direct_url: "Прямой MP4", youtube: "YouTube (только Vizard)", twitch: "Запись Twitch (только Vizard)", stock: "Сток Pexels", channel: "Канал", research_link: "Ссылка-источник" };
+const KIND: Record<string, string> = { upload: "Загруженный файл", direct_url: "Прямой MP4", youtube: "YouTube (нужен файл)", twitch: "Twitch (нужен файл)", stock: "Сохранённый сток", channel: "Канал", research_link: "Ссылка-источник" };
 
 function Sources() {
   const qc = useQueryClient();

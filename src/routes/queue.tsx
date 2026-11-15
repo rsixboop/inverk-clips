@@ -26,7 +26,7 @@ function Queue() {
         {jobs.map((j) => (
           <button key={j.id} onClick={() => setSel(j.id)} className={`grid w-full grid-cols-[1fr_auto] gap-2 border-b border-border px-4 py-2.5 text-left text-sm hover:bg-accent ${sel === j.id ? "bg-accent" : ""}`}>
             <div className="min-w-0"><div className="truncate">{(j.plan as any)?.title ?? j.prompt}</div>
-              <div className="font-mono text-[11px] text-muted-foreground">{stagesFor(j.route).find((s) => s.key === j.stage)?.label ?? "Готово"} · {j.route === "vizard" ? "Vizard" : "Сборка"} · {j.target_seconds} с · {j.language.toUpperCase()} · {new Date(j.created_at).toLocaleString("ru")}</div></div>
+              <div className="font-mono text-[11px] text-muted-foreground">{stagesFor(j.route).find((s) => s.key === j.stage)?.label ?? "Готово"} · {j.workflow_version !== 2 ? "Старый провайдер" : j.route === "clip" ? "ИИ-нарезка" : "Сборка"} · {j.target_seconds} с · {j.language.toUpperCase()} · {new Date(j.created_at).toLocaleString("ru")}</div></div>
             <StatusBadge status={j.status} />
           </button>
         ))}

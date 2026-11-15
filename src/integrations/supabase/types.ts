@@ -93,6 +93,7 @@ export type Database = {
           target_seconds: number
           updated_at: string
           user_id: string
+          workflow_version: number
         }
         Insert: {
           approve_sources?: boolean
@@ -131,6 +132,7 @@ export type Database = {
           target_seconds?: number
           updated_at?: string
           user_id?: string
+          workflow_version?: number
         }
         Update: {
           approve_sources?: boolean
@@ -169,6 +171,7 @@ export type Database = {
           target_seconds?: number
           updated_at?: string
           user_id?: string
+          workflow_version?: number
         }
         Relationships: [
           {
