@@ -67,6 +67,7 @@ export const jobAction = createServerFn({ method: "POST" }).middleware([requireS
     const upd: Record<string, unknown> = { updated_at: now, next_attempt_at: now, lock_until: null, lease_token: null };
     const plan = (job.plan ?? {}) as any;
     const ambiguous = Object.values(plan.provider_tasks ?? {}).some((t: any) => t.state === "submitting" && !t.id);
+    if (ambiguous && ["regenerate", "rerender"].includes(data.action)) throw new Error("Исход платной операции неизвестен. Сначала проверьте кабинет провайдера и используйте подтверждённый повтор шага.");
     let msg = "";
     const active = ["queued", "running", "review", "paused", "blocked"].includes(job.status);
     switch (data.action) {

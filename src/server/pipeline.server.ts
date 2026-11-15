@@ -177,7 +177,7 @@ async function step(c: Ctx) {
         await setPlan(c, { generated_illustration: true, image_prompt: `Clearly an illustration, not documentary footage. ${job.prompt}`, candidates: [{ source_id: "generated", title: "ИИ-иллюстрация", selected: true, duration: job.target_seconds, provider: "Atlas Cloud", license: "Generated illustration" }] }, { stage: "plan" });
         return;
       }
-      if (!pool.length) return fail(c, "discover", `Подходящий лицензированный футаж не найден. ${notes.join(" ")} Добавьте разрешённое видео в «Источники».`, "blocked");
+      if (!pool.length) return fail(c, "discover", plan.needs_specific_footage ? "Нужен разрешённый конкретный материал (например, геймплей GTA). В библиотеке его нет. Веб-поиск подтверждает факты, но не даёт лицензию на видео; загрузите свой файл." : "Разрешённых материалов в библиотеке нет. Загрузите видео или явно запросите ИИ-иллюстрацию, если она подходит теме.", "blocked");
       const judged = await deps.ai("You judge whether footage can honestly illustrate a video. Generic stock (city, cars) is NOT game gameplay; never mark it relevant for gameplay-specific claims. Return JSON only.",
         `Request: ${job.prompt}\nNeeds specific footage: ${!!plan.needs_specific_footage}\nCandidates:\n${pool.map((s, i) => `${i}. [${s.provider}/${s.kind}] ${s.title} ${s.permission_note ? "(" + s.permission_note.slice(0, 80) + ")" : ""}`).join("\n")}\nReturn {items:[{i, score (0-1), reason (Russian, short)}]} for every candidate.`);
       const cands: Candidate[] = pool.map((s, i) => {

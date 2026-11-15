@@ -33,6 +33,7 @@ export async function falPoll(model: string, id: string): Promise<{ state: "proc
   const j = await providerFetch("fal.ai", `${base}/status`, { headers: headers() });
   if (["IN_QUEUE", "IN_PROGRESS"].includes(j.status)) return { state: "processing" };
   if (j.status !== "COMPLETED") throw new ProviderError("fal.ai: неизвестный статус запроса", 0, false);
+  if (j.error) throw new ProviderError("fal.ai: запрос завершился ошибкой; проверьте кабинет провайдера", 0, false);
   const result = await providerFetch("fal.ai", base, { headers: headers() });
   if (result.error || result.detail) throw new ProviderError("fal.ai: обработка не удалась; проверьте запрос в кабинете", 0, false);
   return { state: "done", result };
