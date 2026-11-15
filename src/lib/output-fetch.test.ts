@@ -1,4 +1,3 @@
-// @vitest-environment node
 // FIXTURE tests for guarded output download (fake fetch/DNS; no network).
 import { describe, expect, it } from "vitest";
 import { fetchOutput } from "./output-fetch";

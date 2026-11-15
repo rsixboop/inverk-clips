@@ -1,4 +1,3 @@
-// @vitest-environment node
 // FIXTURE regression tests: in-memory store + fake providers. Not live provider calls, not an e2e MP4.
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
