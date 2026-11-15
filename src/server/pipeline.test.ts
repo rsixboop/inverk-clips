@@ -150,6 +150,18 @@ describe("fenced pipeline (fixtures)", () => {
 
 // Provider queue orchestration fixtures; no live API requests.
 describe("new media workflows (fixtures)", () => {
+  it("expired lease without a successor still cannot submit paid work", async () => {
+    const m = memStore(planned, [src("s1")]); const submit = vi.fn();
+    const sign = m.store.signFootage;
+    m.store.signFootage = async (u, p) => { m.tick(130000); return sign(u, p); };
+    expect(await processJob(m.store, deps({ falSubmit: submit }, m.now), "job-1")).toBe("stale");
+    expect(submit).not.toHaveBeenCalled();
+  });
+  it("a provider result without burned subtitles never finalizes", async () => {
+    const m = memStore({ stage: "captions_wait", plan: { provider_tasks: { captions: { provider: "fal", model: "fal-ai/workflow-utilities/auto-subtitle", id: "caption1", state: "submitted", submitted_at: Date.now() } } } });
+    await processJob(m.store, deps({ falPoll: async () => ({ state: "done", result: { video: { url: "https://v3b.fal.media/video.mp4" }, subtitle_count: 0 } }) }, m.now), "job-1");
+    expect(m.row.status).toBe("failed"); expect(m.row.output_path).toBeNull();
+  });
   it("legacy work is blocked without paid replay and keeps its existing file", async () => {
     const m = memStore({ workflow_version: 1, stage: "render_submit", output_path: "old.mp4" });
     const submit = vi.fn(); await processJob(m.store, deps({ falSubmit: submit }, m.now), "job-1");
