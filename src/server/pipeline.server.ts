@@ -32,7 +32,7 @@ async function fail(db: DB, job: Job, stage: string, msg: string, status: "faile
   await log(db, job, stage, msg, status === "blocked" ? "warn" : "error");
 }
 
-export async function processJob(db: DB, jobId: string, opts: { callbackBase?: string } = {}) {
+export async function processJob(db: DB, jobId: string, opts: { callbackBase?: string | undefined } = {}) {
   const now = new Date();
   const { data: leased } = await db.from("jobs")
     .update({ lock_until: new Date(now.getTime() + 90_000).toISOString() })
@@ -61,7 +61,7 @@ export async function processJob(db: DB, jobId: string, opts: { callbackBase?: s
   }
 }
 
-async function step(db: DB, job: Job, opts: { callbackBase?: string }) {
+async function step(db: DB, job: Job, opts: { callbackBase?: string | undefined }) {
   const t = Date.now();
   const plan = (job.plan ?? {}) as Partial<Plan>;
   switch (job.stage) {

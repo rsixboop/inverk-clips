@@ -6,7 +6,7 @@ export type RenderInput = {
   audioMode: "voiceover" | "original";
   script: string;
   language: "en" | "ru" | "uk";
-  callbackUrl?: string;
+  callbackUrl?: string | undefined;
 };
 
 const VOICE: Record<RenderInput["language"], string> = { en: "Brian", ru: "Daniel", uk: "Daniel" };
@@ -78,7 +78,7 @@ async function call(path: string, init?: RequestInit) {
   }
   const text = await r.text();
   if (!r.ok) throw new ProviderError(`Shotstack ${r.status}: ${text.slice(0, 300)}`, r.status, r.status === 429 || r.status >= 500);
-  return JSON.parse(text) as { response: Record<string, any> };
+  return JSON.parse(text) as { response: any };
 }
 
 export async function probe(url: string): Promise<number | null> {

@@ -10,11 +10,41 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as LibraryRouteImport } from './routes/library'
+import { Route as QueueRouteImport } from './routes/queue'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SourcesRouteImport } from './routes/sources'
 import { Route as ApiPublicShotstackWebhookRouteImport } from './routes/api/public/shotstack-webhook'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LibraryRoute = LibraryRouteImport.update({
+  id: '/library',
+  path: '/library',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QueueRoute = QueueRouteImport.update({
+  id: '/queue',
+  path: '/queue',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SourcesRoute = SourcesRouteImport.update({
+  id: '/sources',
+  path: '/sources',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicShotstackWebhookRoute =
@@ -26,27 +56,69 @@ const ApiPublicShotstackWebhookRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/library': typeof LibraryRoute
+  '/queue': typeof QueueRoute
+  '/settings': typeof SettingsRoute
+  '/sources': typeof SourcesRoute
   '/api/public/shotstack-webhook': typeof ApiPublicShotstackWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/library': typeof LibraryRoute
+  '/queue': typeof QueueRoute
+  '/settings': typeof SettingsRoute
+  '/sources': typeof SourcesRoute
   '/api/public/shotstack-webhook': typeof ApiPublicShotstackWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/library': typeof LibraryRoute
+  '/queue': typeof QueueRoute
+  '/settings': typeof SettingsRoute
+  '/sources': typeof SourcesRoute
   '/api/public/shotstack-webhook': typeof ApiPublicShotstackWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/public/shotstack-webhook'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/library'
+    | '/queue'
+    | '/settings'
+    | '/sources'
+    | '/api/public/shotstack-webhook'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/public/shotstack-webhook'
-  id: '__root__' | '/' | '/api/public/shotstack-webhook'
+  to:
+    | '/'
+    | '/auth'
+    | '/library'
+    | '/queue'
+    | '/settings'
+    | '/sources'
+    | '/api/public/shotstack-webhook'
+  id:
+    | '__root__'
+    | '/'
+    | '/auth'
+    | '/library'
+    | '/queue'
+    | '/settings'
+    | '/sources'
+    | '/api/public/shotstack-webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
+  LibraryRoute: typeof LibraryRoute
+  QueueRoute: typeof QueueRoute
+  SettingsRoute: typeof SettingsRoute
+  SourcesRoute: typeof SourcesRoute
   ApiPublicShotstackWebhookRoute: typeof ApiPublicShotstackWebhookRoute
 }
 
@@ -57,6 +129,41 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/library': {
+      id: '/library'
+      path: '/library'
+      fullPath: '/library'
+      preLoaderRoute: typeof LibraryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/queue': {
+      id: '/queue'
+      path: '/queue'
+      fullPath: '/queue'
+      preLoaderRoute: typeof QueueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sources': {
+      id: '/sources'
+      path: '/sources'
+      fullPath: '/sources'
+      preLoaderRoute: typeof SourcesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/shotstack-webhook': {
@@ -71,6 +178,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
+  LibraryRoute: LibraryRoute,
+  QueueRoute: QueueRoute,
+  SettingsRoute: SettingsRoute,
+  SourcesRoute: SourcesRoute,
   ApiPublicShotstackWebhookRoute: ApiPublicShotstackWebhookRoute,
 }
 export const routeTree = rootRouteImport

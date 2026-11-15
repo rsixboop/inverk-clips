@@ -36,7 +36,7 @@ export function isPrivateIp(ip: string): boolean {
   }
   const p = ip.split(".").map(Number);
   if (p.length !== 4 || p.some((n) => n > 255)) return true;
-  const [a, b] = p;
+  const [a = 0, b = 0] = p;
   return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224 || (a === 198 && (b === 18 || b === 19));
 }
@@ -66,7 +66,7 @@ export async function inspectDirectVideo(raw: string) {
       continue;
     }
     if (!r.ok) throw new Error(`Источник ответил ${r.status}`);
-    const type = (r.headers.get("content-type") ?? "").split(";")[0].trim();
+    const type = (r.headers.get("content-type") ?? "").split(";")[0]!.trim();
     const len = Number(r.headers.get("content-length") ?? 0);
     if (!/^video\/(mp4|quicktime)$/.test(type) && type !== "application/octet-stream")
       throw new Error(`Это не видеофайл (тип: ${type || "неизвестен"}). Нужна прямая ссылка на MP4.`);
