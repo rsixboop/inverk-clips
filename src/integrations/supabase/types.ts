@@ -14,7 +14,332 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      job_events: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          id: number
+          job_id: string
+          level: string
+          message: string
+          stage: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          id?: number
+          job_id: string
+          level?: string
+          message: string
+          stage: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          id?: number
+          job_id?: string
+          level?: string
+          message?: string
+          stage?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_events_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jobs: {
+        Row: {
+          attempts: number
+          audio_mode: string
+          caption: string | null
+          created_at: string
+          error: string | null
+          failed_stage: string | null
+          finished_at: string | null
+          id: string
+          idempotency_key: string
+          language: string
+          lock_until: string | null
+          mode: string
+          next_attempt_at: string
+          niche_id: string | null
+          output_bytes: number | null
+          output_mime: string | null
+          output_path: string | null
+          output_url_expires: string | null
+          plan: Json | null
+          prompt: string
+          render_attempt: number
+          render_id: string | null
+          review_before_render: boolean
+          script: string | null
+          source_id: string | null
+          stage: string
+          status: string
+          target_seconds: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          audio_mode?: string
+          caption?: string | null
+          created_at?: string
+          error?: string | null
+          failed_stage?: string | null
+          finished_at?: string | null
+          id?: string
+          idempotency_key: string
+          language?: string
+          lock_until?: string | null
+          mode: string
+          next_attempt_at?: string
+          niche_id?: string | null
+          output_bytes?: number | null
+          output_mime?: string | null
+          output_path?: string | null
+          output_url_expires?: string | null
+          plan?: Json | null
+          prompt?: string
+          render_attempt?: number
+          render_id?: string | null
+          review_before_render?: boolean
+          script?: string | null
+          source_id?: string | null
+          stage?: string
+          status?: string
+          target_seconds?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          attempts?: number
+          audio_mode?: string
+          caption?: string | null
+          created_at?: string
+          error?: string | null
+          failed_stage?: string | null
+          finished_at?: string | null
+          id?: string
+          idempotency_key?: string
+          language?: string
+          lock_until?: string | null
+          mode?: string
+          next_attempt_at?: string
+          niche_id?: string | null
+          output_bytes?: number | null
+          output_mime?: string | null
+          output_path?: string | null
+          output_url_expires?: string | null
+          plan?: Json | null
+          prompt?: string
+          render_attempt?: number
+          render_id?: string | null
+          review_before_render?: boolean
+          script?: string | null
+          source_id?: string | null
+          stage?: string
+          status?: string
+          target_seconds?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jobs_niche_id_fkey"
+            columns: ["niche_id"]
+            isOneToOne: false
+            referencedRelation: "niches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jobs_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      niches: {
+        Row: {
+          created_at: string
+          default_language: string
+          description: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          default_language?: string
+          description?: string
+          id?: string
+          name: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          default_language?: string
+          description?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      posting_queue: {
+        Row: {
+          account_id: string | null
+          created_at: string
+          id: string
+          job_id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          created_at?: string
+          id?: string
+          job_id: string
+          status?: string
+          user_id?: string
+        }
+        Update: {
+          account_id?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "posting_queue_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "posting_queue_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      provider_configs: {
+        Row: {
+          id: string
+          provider: string
+          settings: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          provider: string
+          settings?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          id?: string
+          provider?: string
+          settings?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      social_accounts: {
+        Row: {
+          created_at: string
+          handle: string
+          id: string
+          platform: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          handle?: string
+          id?: string
+          platform?: string
+          status?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          handle?: string
+          id?: string
+          platform?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      sources: {
+        Row: {
+          bytes: number | null
+          created_at: string
+          duration_s: number | null
+          id: string
+          kind: string
+          mime: string | null
+          permission: string
+          permission_note: string
+          status: string
+          status_note: string
+          storage_path: string | null
+          title: string
+          url: string | null
+          user_id: string
+        }
+        Insert: {
+          bytes?: number | null
+          created_at?: string
+          duration_s?: number | null
+          id?: string
+          kind: string
+          mime?: string | null
+          permission?: string
+          permission_note?: string
+          status?: string
+          status_note?: string
+          storage_path?: string | null
+          title?: string
+          url?: string | null
+          user_id?: string
+        }
+        Update: {
+          bytes?: number | null
+          created_at?: string
+          duration_s?: number | null
+          id?: string
+          kind?: string
+          mime?: string | null
+          permission?: string
+          permission_note?: string
+          status?: string
+          status_note?: string
+          storage_path?: string | null
+          title?: string
+          url?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
