@@ -10,7 +10,7 @@ export type Job = Database["public"]["Tables"]["jobs"]["Row"];
 export type JobEvent = Database["public"]["Tables"]["job_events"]["Row"];
 export type Source = Database["public"]["Tables"]["sources"]["Row"];
 
-export function useJobs(enabled: boolean) {
+export function useJobs(enabled: boolean, drive = false) {
   const q = useQuery({
     queryKey: ["jobs"], enabled,
     queryFn: async () => {
@@ -25,7 +25,7 @@ export function useJobs(enabled: boolean) {
   const delay = useRef(5000);
   const hasActive = (q.data ?? []).some((j) => ACTIVE.includes(j.status));
   useEffect(() => {
-    if (!enabled || !hasActive) return;
+    if (!drive || !enabled || !hasActive) return;
     let stop = false; let t: ReturnType<typeof setTimeout>;
     const loop = async () => {
       try { await tick(); delay.current = 5000; } catch { delay.current = Math.min(60000, delay.current * 2); }
@@ -35,7 +35,7 @@ export function useJobs(enabled: boolean) {
     };
     t = setTimeout(loop, 500);
     return () => { stop = true; clearTimeout(t); };
-  }, [enabled, hasActive, tick, qc]);
+  }, [drive, enabled, hasActive, tick, qc]);
   return q;
 }
 

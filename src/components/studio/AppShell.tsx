@@ -17,7 +17,7 @@ export function AppShell({ children }: { children: (userId: string) => ReactNode
   const { user, loading } = useAuth();
   const nav = useNavigate();
   useEffect(() => { if (!loading && !user) nav({ to: "/auth" }); }, [loading, user, nav]);
-  useJobs(!!user); // keeps the pipeline ticking on every page while jobs are active
+  useJobs(!!user, true); // keeps the pipeline ticking on every page while jobs are active
   if (loading || !user) return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Загрузка…</div>;
   return (
     <div className="flex min-h-screen flex-col bg-background md:flex-row">
