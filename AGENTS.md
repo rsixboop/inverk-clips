@@ -30,7 +30,8 @@ use the editor.
 <!-- LOVABLE:END -->
 
 ## Inverk Clips architecture
-- Video jobs advance one stage per call in `src/server/pipeline.server.ts` under a DB lease (`lock_until`), driven by UI polling (`tickJobs`) and the signed Shotstack webhook; never run multi-minute provider work inside one request.
-- Jobs have a `route`: `compose` (Tavily research → library+Pexels discovery → grounded script → Shotstack render) or `vizard` (Vizard content-aware clipping, no Shotstack). Provider adapters live in `src/lib/providers/`; paid submissions claim `render_attempt` atomically and never auto-retry ambiguous network failures.
+- Video jobs advance one stage per call in `src/server/pipeline.server.ts` under a fenced lease (`lease_token`): every job write requires the token and a live status, and cancel/pause clear the token, so stale or cancelled work is discarded. Driven by UI polling (`tickJobs`, one stage/request), cron and the signed webhook.
+- Internal job/source/event fields are written only by server code through the service client with explicit `user_id` scoping (column-level grants keep users to script/caption and source title/rights); keeps RLS clients from forging plan/provider state.
+- Jobs have a `route`: `compose` (Tavily research → library+Pexels discovery → grounded script → Shotstack render) or `vizard` (Vizard content-aware clipping, no Shotstack). Provider adapters live in `src/lib/providers/`; paid submissions persist `submit_state='submitting'` before the call; an unknown outcome is never auto-resubmitted (manual retry needs explicit confirmation).
 - A managed cron (`/api/public/jobs/tick`, every 2 min) advances jobs when no tab is open; it only reaches the published app.
-- All external URLs pass `src/lib/url-guard.ts` (https, public DNS, HEAD-only, size cap); YouTube/Twitch VOD links are only passed to Vizard's official API; the app never downloads them; channels are references only.
+- All external URLs pass `src/lib/url-guard.ts` (https, public DNS, HEAD-only, size cap); provider outputs are downloaded via `src/lib/output-fetch.ts` (host allowlist, per-hop checks, streamed cap) and verified by `src/lib/mp4-inspect.ts`; YouTube/Twitch VOD links are only passed to Vizard's official API; the app never downloads them; channels are references only.
