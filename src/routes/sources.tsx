@@ -15,7 +15,7 @@ export const Route = createFileRoute("/sources")({
   component: () => <AppShell>{() => <Sources />}</AppShell>,
 });
 
-const KIND: Record<string, string> = { upload: "Загруженный файл", direct_url: "Прямой MP4", youtube: "YouTube (не поддерж.)", twitch: "Twitch (не поддерж.)", channel: "Канал", research_link: "Ссылка-источник" };
+const KIND: Record<string, string> = { upload: "Загруженный файл", direct_url: "Прямой MP4", youtube: "YouTube (только Vizard)", twitch: "Запись Twitch (только Vizard)", stock: "Сток Pexels", channel: "Канал", research_link: "Ссылка-источник" };
 
 function Sources() {
   const qc = useQueryClient();
@@ -31,11 +31,12 @@ function Sources() {
       {!list.length && <p className="p-4 text-sm text-muted-foreground">Источников нет — добавьте их в Студии.</p>}
       {list.map((s) => (
         <div key={s.id} className="grid gap-2 border-b border-border px-4 py-3 text-sm md:grid-cols-[1fr_160px]">
-          <div className="min-w-0">
+          <div className="flex min-w-0 gap-2">{s.preview_url && <img src={s.preview_url} alt="" className="h-12 w-8 shrink-0 rounded object-cover" />}<div className="min-w-0">
             <div className="truncate">{s.title || s.url}</div>
             <div className="font-mono text-[11px] text-muted-foreground">{KIND[s.kind]} · {s.duration_s ? `${Number(s.duration_s).toFixed(1)} с · ` : ""}{s.bytes ? `${(s.bytes / 1048576).toFixed(1)} МБ` : ""}</div>
+            {(s.license || s.attribution) && <div className="text-[11px] text-muted-foreground">{s.license}{s.attribution ? ` · ${s.attribution}` : ""}</div>}
             {s.status_note && <div className="text-xs text-warning">{s.status_note}</div>}
-          </div>
+          </div></div>
           <select value={s.permission} onChange={(e) => setPerm(s.id, e.target.value)} className="h-8 rounded-md border border-input bg-muted px-2 text-xs">
             {PERMISSIONS.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
           </select>

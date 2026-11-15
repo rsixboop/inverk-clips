@@ -3,7 +3,7 @@ import { useState } from "react";
 import { AppShell, StatusBadge } from "@/components/studio/AppShell";
 import { JobDetails } from "@/components/studio/Studio";
 import { useJobs } from "@/hooks/use-jobs";
-import { STAGES } from "@/lib/job-meta";
+import { stagesFor } from "@/lib/job-meta";
 
 export const Route = createFileRoute("/queue")({
   head: () => ({ meta: [
@@ -26,7 +26,7 @@ function Queue() {
         {jobs.map((j) => (
           <button key={j.id} onClick={() => setSel(j.id)} className={`grid w-full grid-cols-[1fr_auto] gap-2 border-b border-border px-4 py-2.5 text-left text-sm hover:bg-accent ${sel === j.id ? "bg-accent" : ""}`}>
             <div className="min-w-0"><div className="truncate">{(j.plan as any)?.title ?? j.prompt}</div>
-              <div className="font-mono text-[11px] text-muted-foreground">{STAGES.find((s) => s.key === j.stage)?.label ?? "Готово"} · {j.target_seconds} с · {j.language.toUpperCase()} · {new Date(j.created_at).toLocaleString("ru")}</div></div>
+              <div className="font-mono text-[11px] text-muted-foreground">{stagesFor(j.route).find((s) => s.key === j.stage)?.label ?? "Готово"} · {j.route === "vizard" ? "Vizard" : "Сборка"} · {j.target_seconds} с · {j.language.toUpperCase()} · {new Date(j.created_at).toLocaleString("ru")}</div></div>
             <StatusBadge status={j.status} />
           </button>
         ))}

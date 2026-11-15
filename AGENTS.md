@@ -31,5 +31,6 @@ use the editor.
 
 ## Inverk Clips architecture
 - Video jobs advance one stage per call in `src/server/pipeline.server.ts` under a DB lease (`lock_until`), driven by UI polling (`tickJobs`) and the signed Shotstack webhook; never run multi-minute provider work inside one request.
-- Rendering, TTS and auto-captions go through Shotstack (`src/lib/shotstack.ts`); a render is submitted only when `render_id` is null after an atomic `render_attempt` claim, to prevent double charges.
-- All external URLs pass `src/lib/url-guard.ts` (https, public DNS, HEAD-only, size cap); YouTube/Twitch/channels are stored as references, never downloaded.
+- Jobs have a `route`: `compose` (Tavily research → library+Pexels discovery → grounded script → Shotstack render) or `vizard` (Vizard content-aware clipping, no Shotstack). Provider adapters live in `src/lib/providers/`; paid submissions claim `render_attempt` atomically and never auto-retry ambiguous network failures.
+- A managed cron (`/api/public/jobs/tick`, every 2 min) advances jobs when no tab is open; it only reaches the published app.
+- All external URLs pass `src/lib/url-guard.ts` (https, public DNS, HEAD-only, size cap); YouTube/Twitch VOD links are only passed to Vizard's official API; the app never downloads them; channels are references only.

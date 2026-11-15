@@ -4,6 +4,9 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { processJob } from "@/server/pipeline.server";
 import { shotstackConfigured, shotstackEnv } from "@/lib/shotstack";
+import { tavilyConfigured } from "@/lib/providers/tavily";
+import { pexelsConfigured } from "@/lib/providers/pexels";
+import { vizardConfigured } from "@/lib/providers/vizard";
 import { classifyUrl, inspectDirectVideo, parsePublicUrl } from "@/lib/url-guard";
 
 function origin() {
@@ -18,13 +21,13 @@ export const tickJobs = createServerFn({ method: "POST" }).middleware([requireSu
 });
 
 export const providerStatus = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async () => ({
-  shotstack: shotstackConfigured(), shotstackEnv: shotstackEnv(), ai: !!process.env["LOVABLE_API_KEY"], tiktok: false, webhookSigning: !!process.env["WEBHOOK_SIGNING_SECRET"],
+  shotstack: shotstackConfigured(), shotstackEnv: shotstackEnv(), tavily: tavilyConfigured(), pexels: pexelsConfigured(), vizard: vizardConfigured(), ai: !!process.env["LOVABLE_API_KEY"], tiktok: false, webhookSigning: !!process.env["WEBHOOK_SIGNING_SECRET"],
 }));
 
 const createSchema = z.object({
   idempotencyKey: z.string().min(8).max(64), mode: z.enum(["niche", "link", "mixed"]), prompt: z.string().max(2000),
   language: z.enum(["en", "ru", "uk"]), targetSeconds: z.number().int().min(10).max(90), audioMode: z.enum(["voiceover", "original"]),
-  reviewBeforeRender: z.boolean(), nicheId: z.string().uuid().nullable(), sourceId: z.string().uuid().nullable(),
+  reviewBeforeRender: z.boolean(), approveSources: z.boolean(), route: z.enum(["compose", "vizard"]), nicheId: z.string().uuid().nullable(), sourceId: z.string().uuid().nullable(),
 });
 export const createJob = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((d: unknown) => createSchema.parse(d))
   .handler(async ({ data, context }) => {
@@ -32,7 +35,7 @@ export const createJob = createServerFn({ method: "POST" }).middleware([requireS
     if (existing) return { id: existing.id, duplicate: true };
     const { data: row, error } = await context.supabase.from("jobs").insert({
       user_id: context.userId, idempotency_key: data.idempotencyKey, mode: data.mode, prompt: data.prompt, language: data.language,
-      target_seconds: data.targetSeconds, audio_mode: data.audioMode, review_before_render: data.reviewBeforeRender, niche_id: data.nicheId, source_id: data.sourceId,
+      target_seconds: data.targetSeconds, audio_mode: data.audioMode, review_before_render: data.reviewBeforeRender, approve_sources: data.approveSources, route: data.mode === "link" ? data.route : "compose", niche_id: data.nicheId, source_id: data.sourceId,
     }).select("id").single();
     if (error) {
       if (error.code === "23505") return { id: (await context.supabase.from("jobs").select("id").eq("idempotency_key", data.idempotencyKey).single()).data!.id, duplicate: true };
@@ -64,10 +67,12 @@ export const jobAction = createServerFn({ method: "POST" }).middleware([requireS
         Object.assign(upd, { status: "running", stage: job.failed_stage ?? job.stage, error: null, attempts: 0, finished_at: null });
         msg = `Повтор шага «${job.failed_stage ?? job.stage}»${job.render_id ? " (существующий рендер не дублируется)" : ""}`; break;
       case "regenerate": if (job.status === "running" && ["render_wait", "finalize"].includes(job.stage)) throw new Error("Идёт рендер — сначала отмените");
+        if (job.route === "vizard") throw new Error("Для ИИ-нарезки выберите другой клип из кандидатов");
         Object.assign(upd, { status: "running", stage: job.plan ? "plan" : "validate", render_id: null, error: null, attempts: 0, finished_at: null }); msg = "Перегенерация сценария"; break;
       case "approve": if (job.status !== "review") throw new Error("Сценарий не ожидает проверки");
-        Object.assign(upd, { status: "running", stage: "render_submit" }); msg = "Сценарий утверждён, отправляю в рендер"; break;
+        upd["status"] = "running"; msg = "Утверждено, продолжаю"; break;
       case "rerender": if (!["succeeded", "failed"].includes(job.status)) throw new Error("Повторный рендер — только для завершённых задач");
+        if (job.route === "vizard") { Object.assign(upd, { status: "running", stage: "finalize", error: null, attempts: 0, finished_at: null }); msg = "Сохраняю выбранный клип Vizard (без новой оплаты)"; break; }
         Object.assign(upd, { status: "running", stage: "render_submit", render_id: null, error: null, attempts: 0, finished_at: null }); msg = "Новый рендер с текущим сценарием (будет списана новая минута рендера)"; break;
     }
     const { error } = await db.from("jobs").update(upd as any).eq("id", job.id).eq("updated_at", job.updated_at);
@@ -91,8 +96,8 @@ export const addUrlSource = createServerFn({ method: "POST" }).middleware([requi
     const u = parsePublicUrl(data.url);
     let kind: string = classifyUrl(u);
     let status = "ready", status_note = "", mime: string | null = null, bytes: number | null = null, url = u.toString();
-    if (kind === "youtube" || kind === "twitch") { status = "unsupported"; status_note = "Загрузка с этой платформы не поддерживается. Скачайте свою/разрешённую запись и загрузите файл."; }
-    else if (kind === "channel") { status = "reference"; status_note = "Канал сохранён как источник для поиска. Это не готовое видео; живая запись стримов пока не поддерживается."; }
+    if (kind === "youtube" || kind === "twitch") { status_note = "Доступно только для ИИ-нарезки через Vizard (официальный API принимает ссылку). Приложение само видео не скачивает."; }
+    else if (kind === "channel") { status = "reference"; status_note = "Канал сохранён как ссылка-ориентир. Это не видео: укажите конкретный ролик/запись. Запись прямых эфиров не поддерживается."; }
     else {
       try { const info = await inspectDirectVideo(url); kind = "direct_url"; url = info.url; mime = info.mime; bytes = info.bytes; }
       catch (e) { if (kind === "page") { kind = "research_link"; status = "reference"; status_note = `Не видеофайл: ${(e as Error).message}. Сохранено как ссылка-источник.`; } else throw e; }
