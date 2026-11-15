@@ -28,3 +28,8 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Inverk Clips architecture
+- Video jobs advance one stage per call in `src/server/pipeline.server.ts` under a DB lease (`lock_until`), driven by UI polling (`tickJobs`) and the signed Shotstack webhook; never run multi-minute provider work inside one request.
+- Rendering, TTS and auto-captions go through Shotstack (`src/lib/shotstack.ts`); a render is submitted only when `render_id` is null after an atomic `render_attempt` claim, to prevent double charges.
+- All external URLs pass `src/lib/url-guard.ts` (https, public DNS, HEAD-only, size cap); YouTube/Twitch/channels are stored as references, never downloaded.
