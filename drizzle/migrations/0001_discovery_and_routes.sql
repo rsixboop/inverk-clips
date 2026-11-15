@@ -1,0 +1,5 @@
+ALTER TABLE public.sources DROP CONSTRAINT IF EXISTS sources_kind_check;
+ALTER TABLE public.sources ADD CONSTRAINT sources_kind_check CHECK (kind IN ('upload','direct_url','youtube','twitch','channel','research_link','stock'));
+ALTER TABLE public.sources ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'user', ADD COLUMN IF NOT EXISTS license text NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS preview_url text, ADD COLUMN IF NOT EXISTS attribution text NOT NULL DEFAULT '', ADD COLUMN IF NOT EXISTS external_id text;
+CREATE UNIQUE INDEX IF NOT EXISTS sources_user_provider_ext ON public.sources(user_id, provider, external_id) WHERE external_id IS NOT NULL;
+ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS route text NOT NULL DEFAULT 'compose', ADD COLUMN IF NOT EXISTS provider_project_id text, ADD COLUMN IF NOT EXISTS approve_sources boolean NOT NULL DEFAULT false;

@@ -8,6 +8,13 @@
       "when": 1794778636483,
       "tag": "0000_inverk_core",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794779243666,
+      "tag": "0001_discovery_and_routes",
+      "breakpoints": true
     }
   ]
 }

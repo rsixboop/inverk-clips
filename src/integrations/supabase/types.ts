@@ -57,6 +57,7 @@ export type Database = {
       }
       jobs: {
         Row: {
+          approve_sources: boolean
           attempts: number
           audio_mode: string
           caption: string | null
@@ -77,9 +78,11 @@ export type Database = {
           output_url_expires: string | null
           plan: Json | null
           prompt: string
+          provider_project_id: string | null
           render_attempt: number
           render_id: string | null
           review_before_render: boolean
+          route: string
           script: string | null
           source_id: string | null
           stage: string
@@ -89,6 +92,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          approve_sources?: boolean
           attempts?: number
           audio_mode?: string
           caption?: string | null
@@ -109,9 +113,11 @@ export type Database = {
           output_url_expires?: string | null
           plan?: Json | null
           prompt?: string
+          provider_project_id?: string | null
           render_attempt?: number
           render_id?: string | null
           review_before_render?: boolean
+          route?: string
           script?: string | null
           source_id?: string | null
           stage?: string
@@ -121,6 +127,7 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          approve_sources?: boolean
           attempts?: number
           audio_mode?: string
           caption?: string | null
@@ -141,9 +148,11 @@ export type Database = {
           output_url_expires?: string | null
           plan?: Json | null
           prompt?: string
+          provider_project_id?: string | null
           render_attempt?: number
           render_id?: string | null
           review_before_render?: boolean
+          route?: string
           script?: string | null
           source_id?: string | null
           stage?: string
@@ -291,14 +300,19 @@ export type Database = {
       }
       sources: {
         Row: {
+          attribution: string
           bytes: number | null
           created_at: string
           duration_s: number | null
+          external_id: string | null
           id: string
           kind: string
+          license: string
           mime: string | null
           permission: string
           permission_note: string
+          preview_url: string | null
+          provider: string
           status: string
           status_note: string
           storage_path: string | null
@@ -307,14 +321,19 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          attribution?: string
           bytes?: number | null
           created_at?: string
           duration_s?: number | null
+          external_id?: string | null
           id?: string
           kind: string
+          license?: string
           mime?: string | null
           permission?: string
           permission_note?: string
+          preview_url?: string | null
+          provider?: string
           status?: string
           status_note?: string
           storage_path?: string | null
@@ -323,14 +342,19 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          attribution?: string
           bytes?: number | null
           created_at?: string
           duration_s?: number | null
+          external_id?: string | null
           id?: string
           kind?: string
+          license?: string
           mime?: string | null
           permission?: string
           permission_note?: string
+          preview_url?: string | null
+          provider?: string
           status?: string
           status_note?: string
           storage_path?: string | null
