@@ -1,7 +1,7 @@
 # Inverk Clips roadmap
 - [x] Data model, auth, private storage, RLS
-- [x] Durable pipeline (validate → plan → render → finalize), retry/cancel/pause, webhook
-- [x] Studio / Queue / Library / Sources / Settings UI
-- [ ] Real MP4 smoke test — blocked: needs SHOTSTACK_API_KEY and a signed-up account
-- [ ] TikTok publishing adapter — after render is proven
-- [ ] Licensed footage discovery, web fact research, YouTube/Twitch ingestion — need a documented, permitted provider
+- [x] Compose route: web research, footage discovery (library + Pexels), grounded script, Shotstack render
+- [x] Vizard route: content-aware clipping of YouTube / Twitch VOD / MP4 / upload
+- [x] Background tick every 2 min (published app only), single-worker lease
+- [ ] Live MP4 smoke test — blocked: needs a signed-up account + VIZARD_API_KEY (or SHOTSTACK/TAVILY/PEXELS keys)
+- [ ] TikTok publishing adapter — after first real render
