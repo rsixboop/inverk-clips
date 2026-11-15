@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { processJob, signJob } from "@/server/pipeline.server";
+import { runJobStage, signJob } from "@/server/pipeline.server";
 
 // Shotstack render callback. We never trust the body: verify an HMAC bound to the job id, then
 // re-poll the provider through the normal pipeline step.
@@ -17,8 +17,7 @@ export const Route = createFileRoute("/api/public/shotstack-webhook")({
         if (diff !== 0) return new Response("forbidden", { status: 403 });
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         await supabaseAdmin.from("jobs").update({ next_attempt_at: new Date().toISOString() }).eq("id", job).eq("stage", "render_wait");
-        await processJob(supabaseAdmin, job);
-        await processJob(supabaseAdmin, job); // finalize immediately if render is done
+        await runJobStage(job); // one bounded stage; finalize follows on the next tick
         return Response.json({ ok: true });
       },
     },

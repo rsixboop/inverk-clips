@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
-import { addUrlSource, createJob, getOutputUrl, jobAction } from "@/lib/jobs.functions";
+import { addUrlSource, createJob, getOutputUrl, jobAction, pickClip as pickClipFn, selectCandidates } from "@/lib/jobs.functions";
 import { LANGS, MODES, PERMISSIONS, stagesFor } from "@/lib/job-meta";
 import { useEvents, useJobs, useSources, type Job } from "@/hooks/use-jobs";
 import { StatusBadge } from "./AppShell";
@@ -179,6 +179,8 @@ export function JobDetails({ job }: { job: Job }) {
   const events = useEvents(job.id).data ?? [];
   const act = useServerFn(jobAction);
   const dl = useServerFn(getOutputUrl);
+  const selCands = useServerFn(selectCandidates);
+  const pick = useServerFn(pickClipFn);
   const [script, setScript] = useState(job.script ?? "");
   const [caption, setCaption] = useState(job.caption ?? "");
   useEffect(() => { setScript(job.script ?? ""); setCaption(job.caption ?? ""); }, [job.id, job.script, job.caption]);
@@ -187,18 +189,20 @@ export function JobDetails({ job }: { job: Job }) {
   const stageIdx = useMemo(() => STAGES.findIndex((s) => s.key === job.stage), [STAGES, job.stage]);
 
   async function run(action: "cancel" | "pause" | "resume" | "retry" | "regenerate" | "approve" | "rerender") {
-    try { await act({ data: { jobId: job.id, action } }); qc.invalidateQueries({ queryKey: ["jobs"] }); qc.invalidateQueries({ queryKey: ["events"] }); }
+    let confirmResubmit: boolean | undefined;
+    if (action === "retry" && job.submit_state === "submitting" && !job.render_id && !job.provider_project_id) {
+      confirmResubmit = window.confirm("Исход прошлой платной отправки неизвестен — провайдер мог уже принять задачу. Проверьте его кабинет. Повторная отправка может списать оплату дважды. Отправить снова?");
+      if (!confirmResubmit) return;
+    }
+    try { await act({ data: { jobId: job.id, action, confirmResubmit } }); qc.invalidateQueries({ queryKey: ["jobs"] }); qc.invalidateQueries({ queryKey: ["events"] }); }
     catch (e) { toast.error((e as Error).message); }
   }
   async function toggleCandidate(i: number) {
-    const cands = [...plan.candidates]; cands[i] = { ...cands[i], selected: !cands[i].selected };
-    const { error } = await supabase.from("jobs").update({ plan: { ...plan, candidates: cands } }).eq("id", job.id);
-    if (error) toast.error(error.message); else qc.invalidateQueries({ queryKey: ["jobs"] });
+    const selected = (plan.candidates as any[]).map((c, k) => (k === i ? !c.selected : c.selected) ? k : -1).filter((k) => k >= 0);
+    try { await selCands({ data: { jobId: job.id, selected } }); qc.invalidateQueries({ queryKey: ["jobs"] }); } catch (e) { toast.error((e as Error).message); }
   }
   async function pickClip(i: number) {
-    const c = plan.vizard_clips[i];
-    const { error } = await supabase.from("jobs").update({ plan: { ...plan, chosen_clip: i, render_url: c.url, title: c.title } }).eq("id", job.id);
-    if (error) return void toast.error(error.message);
+    try { await pick({ data: { jobId: job.id, index: i } }); } catch (e) { return void toast.error((e as Error).message); }
     qc.invalidateQueries({ queryKey: ["jobs"] });
     if (job.status === "succeeded") toast.message("Клип выбран — нажмите «Перерендер», чтобы сохранить его (без новой оплаты Vizard)");
   }

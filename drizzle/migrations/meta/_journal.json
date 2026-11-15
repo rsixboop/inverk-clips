@@ -15,6 +15,13 @@
       "when": 1794779243666,
       "tag": "0001_discovery_and_routes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794779620645,
+      "tag": "0002_harden_jobs_sources",
+      "breakpoints": true
     }
   ]
 }

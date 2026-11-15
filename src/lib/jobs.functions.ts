@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { processJob } from "@/server/pipeline.server";
+import { runJobStage } from "@/server/pipeline.server";
 import { shotstackConfigured, shotstackEnv } from "@/lib/shotstack";
 import { tavilyConfigured } from "@/lib/providers/tavily";
 import { pexelsConfigured } from "@/lib/providers/pexels";
@@ -13,11 +13,17 @@ function origin() {
   try { const u = new URL(getRequest().url); return u.hostname === "localhost" ? undefined : u.origin; } catch { return undefined; }
 }
 
+async function admin() { return (await import("@/integrations/supabase/client.server")).supabaseAdmin; }
+
+// One bounded stage per request: the caller's RLS-scoped client picks its own most-due job, then the
+// fenced pipeline advances it once. The UI polls again for the next stage.
 export const tickJobs = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
-  const { data } = await context.supabase.from("jobs").select("id").in("status", ["queued", "running"])
-    .lte("next_attempt_at", new Date().toISOString()).order("updated_at").limit(3);
-  for (const j of data ?? []) await processJob(context.supabase, j.id, { callbackBase: origin() });
-  return { processed: data?.length ?? 0 };
+  const { data } = await context.supabase.from("jobs").select("id").eq("user_id", context.userId).in("status", ["queued", "running"])
+    .lte("next_attempt_at", new Date().toISOString()).order("next_attempt_at").limit(1);
+  const j = data?.[0];
+  if (!j) return { processed: 0 };
+  await runJobStage(j.id, { callbackBase: origin() });
+  return { processed: 1 };
 });
 
 export const providerStatus = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async () => ({
@@ -41,18 +47,20 @@ export const createJob = createServerFn({ method: "POST" }).middleware([requireS
       if (error.code === "23505") return { id: (await context.supabase.from("jobs").select("id").eq("idempotency_key", data.idempotencyKey).single()).data!.id, duplicate: true };
       throw new Error(error.message);
     }
-    await context.supabase.from("job_events").insert({ job_id: row.id, user_id: context.userId, stage: "validate", message: "Задача создана" });
+    await (await admin()).from("job_events").insert({ job_id: row.id, user_id: context.userId, stage: "validate", message: "Задача создана" });
     return { id: row.id, duplicate: false };
   });
 
-const actionSchema = z.object({ jobId: z.string().uuid(), action: z.enum(["cancel", "pause", "resume", "retry", "regenerate", "approve", "rerender"]) });
+const actionSchema = z.object({ jobId: z.string().uuid(), action: z.enum(["cancel", "pause", "resume", "retry", "regenerate", "approve", "rerender"]), confirmResubmit: z.boolean().optional() });
 export const jobAction = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((d: unknown) => actionSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const db = context.supabase;
-    const { data: job } = await db.from("jobs").select("*").eq("id", data.jobId).single();
+    const { data: job } = await context.supabase.from("jobs").select("*").eq("id", data.jobId).eq("user_id", context.userId).maybeSingle();
     if (!job) throw new Error("Задача не найдена");
     const now = new Date().toISOString();
-    const upd: Record<string, unknown> = { updated_at: now, next_attempt_at: now, lock_until: null };
+    const deadline = new Date(Date.now() + 3 * 3600e3).toISOString();
+    // clearing lease_token fences out any in-flight worker: its later writes match 0 rows and are discarded
+    const upd: Record<string, unknown> = { updated_at: now, next_attempt_at: now, lock_until: null, lease_token: null };
+    const ambiguous = job.submit_state === "submitting" && !job.render_id && !job.provider_project_id;
     let msg = "";
     const active = ["queued", "running", "review", "paused", "blocked"].includes(job.status);
     switch (data.action) {
@@ -64,20 +72,52 @@ export const jobAction = createServerFn({ method: "POST" }).middleware([requireS
       case "resume": if (job.status !== "paused") throw new Error("Задача не на паузе");
         upd["status"] = "running"; msg = "Продолжено"; break;
       case "retry": if (!["failed", "blocked", "cancelled"].includes(job.status)) throw new Error("Повтор доступен только после ошибки/блокировки/отмены");
-        Object.assign(upd, { status: "running", stage: job.failed_stage ?? job.stage, error: null, attempts: 0, finished_at: null });
-        msg = `Повтор шага «${job.failed_stage ?? job.stage}»${job.render_id ? " (существующий рендер не дублируется)" : ""}`; break;
+        if (ambiguous && !data.confirmResubmit) throw new Error("Исход прошлой платной отправки неизвестен. Проверьте кабинет провайдера и подтвердите повторную отправку — возможна двойная оплата.");
+        Object.assign(upd, { status: "running", stage: job.failed_stage ?? job.stage, error: null, attempts: 0, finished_at: null, deadline_at: deadline, ...(ambiguous ? { submit_state: null } : {}) });
+        msg = `Повтор шага «${job.failed_stage ?? job.stage}»${ambiguous ? " — пользователь подтвердил повторную платную отправку" : job.render_id ? " (существующий рендер не дублируется)" : ""}`; break;
       case "regenerate": if (job.status === "running" && ["render_wait", "finalize"].includes(job.stage)) throw new Error("Идёт рендер — сначала отмените");
         if (job.route === "vizard") throw new Error("Для ИИ-нарезки выберите другой клип из кандидатов");
-        Object.assign(upd, { status: "running", stage: job.plan ? "plan" : "validate", render_id: null, error: null, attempts: 0, finished_at: null }); msg = "Перегенерация сценария"; break;
+        Object.assign(upd, { status: "running", stage: job.plan ? "plan" : "validate", render_id: null, submit_state: null, error: null, attempts: 0, finished_at: null, deadline_at: deadline }); msg = "Перегенерация сценария"; break;
       case "approve": if (job.status !== "review") throw new Error("Сценарий не ожидает проверки");
         upd["status"] = "running"; msg = "Утверждено, продолжаю"; break;
       case "rerender": if (!["succeeded", "failed"].includes(job.status)) throw new Error("Повторный рендер — только для завершённых задач");
-        if (job.route === "vizard") { Object.assign(upd, { status: "running", stage: "finalize", error: null, attempts: 0, finished_at: null }); msg = "Сохраняю выбранный клип Vizard (без новой оплаты)"; break; }
-        Object.assign(upd, { status: "running", stage: "render_submit", render_id: null, error: null, attempts: 0, finished_at: null }); msg = "Новый рендер с текущим сценарием (будет списана новая минута рендера)"; break;
+        if (job.route === "vizard") { Object.assign(upd, { status: "running", stage: "finalize", error: null, attempts: 0, finished_at: null, deadline_at: deadline }); msg = "Сохраняю выбранный клип Vizard (без новой оплаты)"; break; }
+        Object.assign(upd, { status: "running", stage: "render_submit", render_id: null, submit_state: null, error: null, attempts: 0, finished_at: null, deadline_at: deadline }); msg = "Новый рендер с текущим сценарием (будет списана новая минута рендера)"; break;
     }
-    const { error } = await db.from("jobs").update(upd as any).eq("id", job.id).eq("updated_at", job.updated_at);
+    const db = await admin(); // internal fields are not user-writable; ownership verified above and re-checked here
+    const { data: rows, error } = await db.from("jobs").update(upd as any).eq("id", job.id).eq("user_id", context.userId).eq("updated_at", job.updated_at).select("id");
     if (error) throw new Error(error.message);
+    if (!rows?.length) throw new Error("Состояние задачи изменилось — обновите и попробуйте снова");
     await db.from("job_events").insert({ job_id: job.id, user_id: context.userId, stage: job.stage, message: msg });
+    return { ok: true };
+  });
+
+// Candidate / clip choice: validated server-side, only the selection flags change.
+export const selectCandidates = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ jobId: z.string().uuid(), selected: z.array(z.number().int().min(0).max(50)).max(50) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: job } = await context.supabase.from("jobs").select("*").eq("id", data.jobId).eq("user_id", context.userId).maybeSingle();
+    if (!job) throw new Error("Задача не найдена");
+    if (job.status !== "review" || job.stage !== "plan") throw new Error("Выбор футажа доступен только на шаге проверки");
+    const plan = (job.plan ?? {}) as any;
+    const cands = ((plan.candidates ?? []) as any[]).map((c, i) => ({ ...c, selected: data.selected.includes(i) }));
+    const { data: rows } = await (await admin()).from("jobs").update({ plan: { ...plan, candidates: cands }, updated_at: new Date().toISOString() })
+      .eq("id", job.id).eq("user_id", context.userId).eq("updated_at", job.updated_at).select("id");
+    if (!rows?.length) throw new Error("Состояние задачи изменилось — обновите");
+    return { ok: true };
+  });
+export const pickClip = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ jobId: z.string().uuid(), index: z.number().int().min(0).max(50) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: job } = await context.supabase.from("jobs").select("*").eq("id", data.jobId).eq("user_id", context.userId).maybeSingle();
+    if (!job || job.route !== "vizard") throw new Error("Задача не найдена");
+    if (!["review", "succeeded", "failed"].includes(job.status)) throw new Error("Сейчас клип выбрать нельзя");
+    const plan = (job.plan ?? {}) as any;
+    const clip = plan.vizard_clips?.[data.index];
+    if (!clip) throw new Error("Нет такого клипа");
+    const { data: rows } = await (await admin()).from("jobs").update({ plan: { ...plan, chosen_clip: data.index, title: clip.title }, updated_at: new Date().toISOString() })
+      .eq("id", job.id).eq("user_id", context.userId).eq("updated_at", job.updated_at).select("id");
+    if (!rows?.length) throw new Error("Состояние задачи изменилось — обновите");
     return { ok: true };
   });
 
@@ -102,7 +142,7 @@ export const addUrlSource = createServerFn({ method: "POST" }).middleware([requi
       try { const info = await inspectDirectVideo(url); kind = "direct_url"; url = info.url; mime = info.mime; bytes = info.bytes; }
       catch (e) { if (kind === "page") { kind = "research_link"; status = "reference"; status_note = `Не видеофайл: ${(e as Error).message}. Сохранено как ссылка-источник.`; } else throw e; }
     }
-    const { data: row, error } = await context.supabase.from("sources").insert({ user_id: context.userId, kind, url, title: u.hostname + u.pathname.slice(0, 60), mime, bytes, permission: data.permission, permission_note: data.note, status, status_note }).select("*").single();
+    const { data: row, error } = await (await admin()).from("sources").insert({ user_id: context.userId, kind, url, title: u.hostname + u.pathname.slice(0, 60), mime, bytes, permission: data.permission, permission_note: data.note, status, status_note }).select("*").single();
     if (error) throw new Error(error.message);
     return row;
   });
