@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -172,8 +172,7 @@ export function JobDetails({ job }: { job: Job }) {
   const dl = useServerFn(getOutputUrl);
   const [script, setScript] = useState(job.script ?? "");
   const [caption, setCaption] = useState(job.caption ?? "");
-  const [editKey, setEditKey] = useState(job.id + job.updated_at);
-  if (editKey !== job.id + (job.script ?? "") + (job.caption ?? "")) { setEditKey(job.id + (job.script ?? "") + (job.caption ?? "")); setScript(job.script ?? ""); setCaption(job.caption ?? ""); }
+  useEffect(() => { setScript(job.script ?? ""); setCaption(job.caption ?? ""); }, [job.id, job.script, job.caption]);
   const plan = (job.plan ?? {}) as any;
   const stageIdx = useMemo(() => STAGES.findIndex((s) => s.key === job.stage), [job.stage]);
 

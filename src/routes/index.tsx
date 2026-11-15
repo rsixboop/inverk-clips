@@ -1,23 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { AppShell } from "@/components/studio/AppShell";
+import { Studio } from "@/components/studio/Studio";
 
-// The home route ships no og:image, so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
-  component: Index,
+  head: () => ({ meta: [
+    { title: "Студия — Inverk Clips" }, { name: "description", content: "Создание вертикальных роликов 1080×1920 из запроса и футажа." },
+    { property: "og:title", content: "Студия — Inverk Clips" }, { property: "og:description", content: "Создание вертикальных роликов из запроса и футажа." },
+    { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" },
+  ] }),
+  component: () => <AppShell>{(uid) => <Studio userId={uid} />}</AppShell>,
 });
-
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
-  );
-}
