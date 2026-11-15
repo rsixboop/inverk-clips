@@ -35,7 +35,7 @@ async function fail(db: DB, job: Job, stage: string, msg: string, status: "faile
   await patch(db, job, { status, failed_stage: stage, error: msg, finished_at: status === "failed" ? new Date().toISOString() : null });
   await log(db, job, stage, msg, status === "blocked" ? "warn" : "error");
 }
-const P = (job: Job) => (job.plan ?? {}) as Record<string, any>;
+const P = (job: Job): any => job.plan ?? {};
 async function setPlan(db: DB, job: Job, add: Record<string, unknown>, extra: Partial<Job> = {}) {
   await patch(db, job, { plan: { ...P(job), ...add } as any, ...extra });
 }
