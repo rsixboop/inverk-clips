@@ -5,5 +5,5 @@
 - [x] Background tick every 2 min (published app only), single-worker lease
 - [x] Replace active providers with fal.ai + Atlas Cloud + Tavily; preserve legacy history without paid replay
 - [x] Verify queue adapters, content-aware selection, vertical composition and captions with regression fixtures
-- [ ] Live MP4 smoke test — blocked until FAL_KEY, ATLAS_CLOUD_API_KEY and TAVILY_API_KEY are configured
-- [ ] Signed-in UI and live playback/download checks — blocked: no test-user approval or existing account for requester
+- [x] Deliver one 16s original stylized gaming meme under the existing owner's account; fal tariff estimate $0.018, supervised motion-render import
+- [x] Verify real 1080×1920 H.264/AAC MP4, authenticated Library playback and download; desktop/mobile checked
