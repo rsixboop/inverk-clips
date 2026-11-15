@@ -10,7 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { addUrlSource, createJob, getOutputUrl, jobAction } from "@/lib/jobs.functions";
-import { LANGS, MODES, PERMISSIONS, STAGES } from "@/lib/job-meta";
+import { LANGS, MODES, PERMISSIONS, stagesFor } from "@/lib/job-meta";
 import { useEvents, useJobs, useSources, type Job } from "@/hooks/use-jobs";
 import { StatusBadge } from "./AppShell";
 import { useOutputUrl } from "./useOutputUrl";
@@ -41,6 +41,8 @@ export function Studio({ userId }: { userId: string }) {
   const [seconds, setSeconds] = useState(40);
   const [audioMode, setAudioMode] = useState<"voiceover" | "original">("voiceover");
   const [review, setReview] = useState(true);
+  const [approveSources, setApproveSources] = useState(true);
+  const [route, setRoute] = useState<"vizard" | "compose">("vizard");
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [permission, setPermission] = useState<"owned" | "licensed" | "permitted" | "unknown">("owned");
@@ -75,7 +77,7 @@ export function Studio({ userId }: { userId: string }) {
   async function submit() {
     setBusy("create");
     try {
-      const r = await create({ data: { idempotencyKey: idemKey, mode, prompt, language, targetSeconds: seconds, audioMode, reviewBeforeRender: review, nicheId: null, sourceId } });
+      const r = await create({ data: { idempotencyKey: idemKey, mode, prompt, language, targetSeconds: seconds, audioMode, reviewBeforeRender: review, approveSources, route, nicheId: null, sourceId } });
       setSelected(r.id); setIdemKey(crypto.randomUUID());
       qc.invalidateQueries({ queryKey: ["jobs"] });
       toast.success(r.duplicate ? "Эта задача уже создана" : "Задача запущена");
@@ -94,7 +96,13 @@ export function Studio({ userId }: { userId: string }) {
           <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} className="resize-none text-sm" />
         </div>
         <div className="space-y-2">
-          <div className="label-xs">Футаж {mode === "niche" && <span className="normal-case tracking-normal">— обязателен: автопоиск лицензированного видео не подключён</span>}</div>
+          {mode === "link" && (
+            <div className="space-y-1.5">
+              <Seg value={route} onChange={setRoute} items={[{ key: "vizard", label: "ИИ-нарезка (Vizard)" }, { key: "compose", label: "Сборка (Shotstack)" }] as const} />
+              <p className="text-[11px] text-muted-foreground">{route === "vizard" ? "Vizard анализирует речь и сцены и сам режет вертикальные клипы с субтитрами. Платный сервис; обработка — от минут до десятков минут." : "Ручная сборка выбранного файла с ИИ-озвучкой и субтитрами. Нарезка по отрезкам, без анализа содержания."}</p>
+            </div>
+          )}
+          <div className="label-xs">Футаж {mode !== "link" && <span className="normal-case tracking-normal">— необязателен: будет найден в библиотеке и на Pexels</span>}</div>
           <Seg value={permission} onChange={setPermission} items={PERMISSIONS.filter((p) => p.key !== "unknown")} />
           <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground hover:border-primary hover:text-foreground">
             <Upload className="h-4 w-4" /> {busy === "upload" ? "Загрузка…" : "Загрузить MP4/MOV (до 200 МБ)"}
@@ -116,7 +124,8 @@ export function Studio({ userId }: { userId: string }) {
           <div className="flex justify-between"><span className="label-xs">Длительность</span><span className="font-mono text-xs text-primary">{seconds} с</span></div>
           <Slider min={15} max={90} step={5} value={[seconds]} onValueChange={(v) => setSeconds(v[0] ?? 40)} />
         </div>
-        <label className="flex items-center justify-between text-xs"><span>Проверить сценарий перед рендером</span><Switch checked={review} onCheckedChange={setReview} /></label>
+        {mode !== "link" && <label className="flex items-center justify-between text-xs"><span>Утвердить найденный футаж</span><Switch checked={approveSources} onCheckedChange={setApproveSources} /></label>}
+        <label className="flex items-center justify-between text-xs"><span>{mode === "link" && route === "vizard" ? "Проверить выбранный клип перед сохранением" : "Проверить сценарий перед рендером"}</span><Switch checked={review} onCheckedChange={setReview} /></label>
         <Button onClick={submit} disabled={busy === "create" || !prompt.trim()} className="glow mt-auto">
           <Sparkles className="h-4 w-4" /> {busy === "create" ? "Создаю…" : "Создать ролик"}
         </Button>
@@ -141,9 +150,9 @@ function Preview({ job }: { job: Job | null }) {
       {url ? <video key={url} src={url} controls playsInline className="h-full w-full object-contain" /> : (
         <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
           {!job && <><Clapperboard className="h-8 w-8 text-muted-foreground" /><p className="text-sm text-muted-foreground">Здесь появится готовый MP4 1080×1920</p></>}
-          {job && ["queued", "running"].includes(job.status) && <><span className="pulse-dot h-3 w-3 rounded-full bg-primary" /><p className="text-sm">{STAGES.find((s) => s.key === job.stage)?.label}…</p></>}
+          {job && ["queued", "running"].includes(job.status) && <><span className="pulse-dot h-3 w-3 rounded-full bg-primary" /><p className="text-sm">{stagesFor(job.route).find((s) => s.key === job.stage)?.label}…</p></>}
           {job && ["failed", "blocked"].includes(job.status) && <><AlertTriangle className="h-8 w-8 text-warning" /><p className="text-sm text-muted-foreground">{job.error}</p></>}
-          {job && job.status === "review" && <p className="text-sm text-warning">Сценарий ждёт вашей проверки справа →</p>}
+          {job && job.status === "review" && <p className="text-sm text-warning">{(job.plan as any)?.gap ?? "Ждёт вашей проверки справа →"}</p>}
           {job && ["paused", "cancelled"].includes(job.status) && <p className="text-sm text-muted-foreground">{job.status === "paused" ? "На паузе" : "Отменено"}</p>}
         </div>
       )}
@@ -174,11 +183,24 @@ export function JobDetails({ job }: { job: Job }) {
   const [caption, setCaption] = useState(job.caption ?? "");
   useEffect(() => { setScript(job.script ?? ""); setCaption(job.caption ?? ""); }, [job.id, job.script, job.caption]);
   const plan = (job.plan ?? {}) as any;
-  const stageIdx = useMemo(() => STAGES.findIndex((s) => s.key === job.stage), [job.stage]);
+  const STAGES = stagesFor(job.route);
+  const stageIdx = useMemo(() => STAGES.findIndex((s) => s.key === job.stage), [STAGES, job.stage]);
 
   async function run(action: "cancel" | "pause" | "resume" | "retry" | "regenerate" | "approve" | "rerender") {
     try { await act({ data: { jobId: job.id, action } }); qc.invalidateQueries({ queryKey: ["jobs"] }); qc.invalidateQueries({ queryKey: ["events"] }); }
     catch (e) { toast.error((e as Error).message); }
+  }
+  async function toggleCandidate(i: number) {
+    const cands = [...plan.candidates]; cands[i] = { ...cands[i], selected: !cands[i].selected };
+    const { error } = await supabase.from("jobs").update({ plan: { ...plan, candidates: cands } }).eq("id", job.id);
+    if (error) toast.error(error.message); else qc.invalidateQueries({ queryKey: ["jobs"] });
+  }
+  async function pickClip(i: number) {
+    const c = plan.vizard_clips[i];
+    const { error } = await supabase.from("jobs").update({ plan: { ...plan, chosen_clip: i, render_url: c.url, title: c.title } }).eq("id", job.id);
+    if (error) return void toast.error(error.message);
+    qc.invalidateQueries({ queryKey: ["jobs"] });
+    if (job.status === "succeeded") toast.message("Клип выбран — нажмите «Перерендер», чтобы сохранить его (без новой оплаты Vizard)");
   }
   async function save() {
     const { error } = await supabase.from("jobs").update({ script, caption }).eq("id", job.id);
@@ -197,12 +219,12 @@ export function JobDetails({ job }: { job: Job }) {
       </div>
       <div className="flex flex-wrap gap-1.5">
         {job.status === "succeeded" && <Button size="sm" onClick={download}><Download className="h-4 w-4" /> Скачать MP4</Button>}
-        {job.status === "review" && <Button size="sm" onClick={() => run("approve")}><Check className="h-4 w-4" /> Рендерить</Button>}
+        {job.status === "review" && <Button size="sm" onClick={() => run("approve")}><Check className="h-4 w-4" /> {job.stage === "plan" ? "Утвердить футаж" : job.stage === "finalize" ? "Сохранить клип" : "Рендерить"}</Button>}
         {active && <Button size="sm" variant="secondary" onClick={() => run("pause")}><Pause className="h-4 w-4" /> Пауза</Button>}
         {job.status === "paused" && <Button size="sm" variant="secondary" onClick={() => run("resume")}><Play className="h-4 w-4" /> Продолжить</Button>}
         {["failed", "blocked", "cancelled"].includes(job.status) && <Button size="sm" variant="secondary" onClick={() => run("retry")}><RotateCcw className="h-4 w-4" /> Повторить шаг</Button>}
-        {job.plan && !(active && ["render_wait", "finalize"].includes(job.stage)) && <Button size="sm" variant="secondary" onClick={() => run("regenerate")}><Sparkles className="h-4 w-4" /> Новый сценарий</Button>}
-        {["succeeded", "failed"].includes(job.status) && job.script && <Button size="sm" variant="secondary" onClick={() => confirm("Новый рендер спишет минуту рендера. Продолжить?") && run("rerender")}><Clapperboard className="h-4 w-4" /> Перерендер</Button>}
+        {job.plan && job.route !== "vizard" && !(active && ["render_wait", "finalize"].includes(job.stage)) && <Button size="sm" variant="secondary" onClick={() => run("regenerate")}><Sparkles className="h-4 w-4" /> Новый сценарий</Button>}
+        {["succeeded", "failed"].includes(job.status) && job.script && <Button size="sm" variant="secondary" onClick={() => confirm(job.route === "vizard" ? "Сохранить выбранный клип Vizard?" : "Новый рендер спишет минуту рендера. Продолжить?") && run("rerender")}><Clapperboard className="h-4 w-4" /> {job.route === "vizard" ? "Сохранить клип" : "Перерендер"}</Button>}
         {["queued", "running", "review", "paused", "blocked"].includes(job.status) && <Button size="sm" variant="destructive" onClick={() => run("cancel")}><Square className="h-4 w-4" /> Стоп</Button>}
       </div>
       {job.error && <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-xs">{job.error}</div>}
@@ -222,13 +244,44 @@ export function JobDetails({ job }: { job: Job }) {
 
       {job.plan && (
         <div className="space-y-2">
-          <div className="label-xs">Сценарий озвучки</div>
+          <div className="label-xs">{job.route === "vizard" ? "Транскрипт клипа" : "Сценарий озвучки"}</div>
           <Textarea value={script} onChange={(e) => setScript(e.target.value)} rows={5} className="text-xs" />
           <div className="label-xs">Подпись для TikTok</div>
           <Textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={3} className="text-xs" />
           <Button size="sm" variant="outline" onClick={save} disabled={script === (job.script ?? "") && caption === (job.caption ?? "")}>Сохранить правки</Button>
           {plan.clip_length && <p className="font-mono text-[11px] text-muted-foreground">Фрагмент: {Number(plan.clip_start).toFixed(1)}–{(Number(plan.clip_start) + Number(plan.clip_length)).toFixed(1)} с · {plan.selection_note}</p>}
         </div>
+      )}
+      {plan.gap && <div className="rounded-md border border-warning/40 bg-warning/10 p-2.5 text-xs">{plan.gap}</div>}
+      {plan.candidates?.length > 0 && job.route !== "vizard" && (
+        <div className="space-y-1.5">
+          <div className="label-xs">Футаж-кандидаты {job.status === "review" && job.stage === "plan" && "— отметьте и утвердите"}</div>
+          {plan.candidates.map((c: any, i: number) => (
+            <label key={c.source_id} className={`flex gap-2 rounded border p-1.5 text-xs ${c.selected ? "border-primary/60" : "border-border"}`}>
+              <input type="checkbox" checked={c.selected} disabled={!(job.status === "review" && job.stage === "plan")} onChange={() => toggleCandidate(i)} />
+              {c.preview && <img src={c.preview} alt="" className="h-12 w-8 shrink-0 rounded object-cover" />}
+              <span className="min-w-0"><span className="block truncate">{c.title}</span>
+                <span className="block text-[10px] text-muted-foreground">{c.provider} · {c.license} · релевантность {Math.round(c.score * 100)}%</span>
+                {c.reason && <span className="block text-[10px] text-muted-foreground">{c.reason}</span>}</span>
+            </label>
+          ))}
+        </div>
+      )}
+      {plan.vizard_clips?.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="label-xs">Клипы Vizard</div>
+          {plan.vizard_clips.map((c: any, i: number) => (
+            <button key={i} type="button" onClick={() => pickClip(i)} disabled={active} className={`block w-full rounded border p-2 text-left text-xs ${plan.chosen_clip === i ? "border-primary" : "border-border"}`}>
+              <b>{i + 1}. {c.title}</b> <span className="font-mono text-muted-foreground">{Math.round(c.durationS)} с · viral {c.viralScore}</span>
+              <span className="mt-0.5 block line-clamp-2 text-[11px] text-muted-foreground">{c.transcript}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {plan.research?.length > 0 && (
+        <details className="text-xs"><summary className="label-xs cursor-pointer">Найденные источники ({plan.research.length})</summary>
+          {plan.research.map((r: any) => <a key={r.url} href={r.url} target="_blank" rel="noreferrer noopener" className="mt-1 block truncate text-info underline">{r.title || r.url}</a>)}
+        </details>
       )}
       {plan.claims?.length > 0 && (
         <div className="space-y-1.5">
@@ -239,7 +292,7 @@ export function JobDetails({ job }: { job: Job }) {
               {c.source_url && <a href={c.source_url} target="_blank" rel="noreferrer noopener" className="block truncate text-info underline">{c.source_url}</a>}
             </div>
           ))}
-          <p className="text-[11px] text-muted-foreground">Ссылки предложены ИИ без веб-поиска — проверьте перед публикацией.</p>
+          <p className="text-[11px] text-muted-foreground">Каждый факт привязан к результату веб-поиска; факты без найденного источника удалены.</p>
         </div>
       )}
       <div className="space-y-1">

@@ -58,7 +58,7 @@ describe("tavily + pexels", () => {
     const f = vi.fn().mockResolvedValue(new Response(JSON.stringify({ results: [] })));
     vi.stubGlobal("fetch", f); vi.stubEnv("TAVILY_API_KEY", "k");
     await tavilySearch("gta");
-    expect(f.mock.calls[0][1].headers.Authorization).toBe("Bearer k");
+    expect((f.mock.calls[0] as any)[1].headers.Authorization).toBe("Bearer k");
   });
   it("picks the smallest mp4 that is still >=1080 short side", () => {
     const [c] = parsePexels({ videos: [{ id: 5, url: "https://www.pexels.com/video/night-city-5/", image: "i", duration: 12, user: { name: "A" },
