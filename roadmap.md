@@ -3,5 +3,7 @@
 - [x] Compose route: web research, footage discovery (library + Pexels), grounded script, Shotstack render
 - [x] Vizard route: content-aware clipping of YouTube / Twitch VOD / MP4 / upload
 - [x] Background tick every 2 min (published app only), single-worker lease
-- [ ] Live MP4 smoke test — blocked: needs a signed-up account + VIZARD_API_KEY (or SHOTSTACK/TAVILY/PEXELS keys)
+- [ ] Replace active providers with fal.ai + Atlas Cloud + Tavily; preserve legacy history without paid replay
+- [ ] Verify queue adapters, content-aware selection, vertical composition and captions with regression fixtures
+- [ ] Live MP4 smoke test — blocked until FAL_KEY, ATLAS_CLOUD_API_KEY and TAVILY_API_KEY are configured
 - [ ] TikTok publishing adapter — after first real render
