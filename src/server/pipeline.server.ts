@@ -218,7 +218,7 @@ Return {title, script, caption (<=150 chars), hashtags[3-6], claims:[{claim, ref
     case "metadata_submit": return submitTask(c, "metadata", "fal", FAL.metadata, { media_url: plan.input_url, extract_frames: true });
     case "metadata_wait": {
       const r = await pollTask(c, "metadata"); if (!r) return;
-      const m = r.media;
+      const m = r["media"];
       if (!m || !Number.isFinite(m.duration) || m.duration <= 0) throw new Error("Не удалось определить длительность источника");
       if (m.duration > 1800) return fail(c, job.stage, "Для экономичной нарезки загрузите видео до 30 минут", "blocked");
       await setPlan(c, { input_meta: m }, { stage: "transcript_submit" }); return;
@@ -226,8 +226,8 @@ Return {title, script, caption (<=150 chars), hashtags[3-6], claims:[{claim, ref
     case "transcript_submit": return submitTask(c, "transcript", "fal", FAL.whisper, { audio_url: plan.input_url, task: "transcribe", chunk_level: "word", diarize: false });
     case "transcript_wait": {
       const r = await pollTask(c, "transcript"); if (!r) return;
-      if (!Array.isArray(r.chunks) || !r.text) return fail(c, job.stage, "Речь не распознана. Используйте сборку с озвучкой для немого видео.", "blocked");
-      await setPlan(c, { transcript: r.text, words: r.chunks }, { stage: "moment_select" }); return;
+      if (!Array.isArray(r["chunks"]) || !r["text"]) return fail(c, job.stage, "Речь не распознана. Используйте сборку с озвучкой для немого видео.", "blocked");
+      await setPlan(c, { transcript: r["text"], words: r["chunks"] }, { stage: "moment_select" }); return;
     }
     case "moment_select": {
       const frames = [plan.input_meta?.start_frame_url, plan.input_meta?.end_frame_url].filter((u) => typeof u === "string").map(providerMedia);
@@ -242,17 +242,17 @@ Return {title, script, caption (<=150 chars), hashtags[3-6], claims:[{claim, ref
     case "image_submit": return submitTask(c, "image", "atlas", ATLAS_IMAGE, imageInput(plan.image_prompt));
     case "image_wait": {
       const r = await pollTask(c, "image"); if (!r) return;
-      await setPlan(c, { image_url: providerMedia(r.url) }, { stage: job.audio_mode === "voiceover" ? "tts_submit" : "render_submit" }); return;
+      await setPlan(c, { image_url: providerMedia(r["url"]) }, { stage: job.audio_mode === "voiceover" ? "tts_submit" : "render_submit" }); return;
     }
     case "tts_submit": return submitTask(c, "tts", "atlas", ATLAS_TTS, ttsInput(job.script ?? ""));
     case "tts_wait": {
       const r = await pollTask(c, "tts"); if (!r) return;
-      await setPlan(c, { audio_url: providerMedia(r.url) }, { stage: "audio_metadata_submit" }); return;
+      await setPlan(c, { audio_url: providerMedia(r["url"]) }, { stage: "audio_metadata_submit" }); return;
     }
     case "audio_metadata_submit": return submitTask(c, "audio_metadata", "fal", FAL.metadata, { media_url: plan.audio_url });
     case "audio_metadata_wait": {
       const r = await pollTask(c, "audio_metadata"); if (!r) return;
-      const duration = Number(r.media?.duration);
+      const duration = Number(r["media"]?.duration);
       if (!Number.isFinite(duration) || duration <= 0 || duration > 120) throw new Error("Недопустимая длительность озвучки");
       await setPlan(c, { speech_duration: duration }, { stage: "render_submit" }); return;
     }
@@ -271,7 +271,7 @@ Return {title, script, caption (<=150 chars), hashtags[3-6], claims:[{claim, ref
     }
     case "render_wait": {
       const index = Number(plan.trim_index ?? 0), r = await pollTask(c, `trim${index}`); if (!r) return;
-      await setPlan(c, { trimmed: [...(plan.trimmed ?? []), { url: providerMedia(r.video?.url), duration: Number(r.trimmed_duration) }], trim_index: index + 1 }, { stage: "render_submit" }); return;
+      await setPlan(c, { trimmed: [...(plan.trimmed ?? []), { url: providerMedia(r["video"]?.url), duration: Number(r["trimmed_duration"]) }], trim_index: index + 1 }, { stage: "render_submit" }); return;
     }
     case "compose_submit": {
       const duration = Number(plan.speech_duration ?? (plan.trimmed ?? []).reduce((n: number, s: any) => n + s.duration, 0));
@@ -295,18 +295,18 @@ Return {title, script, caption (<=150 chars), hashtags[3-6], claims:[{claim, ref
     }
     case "compose_wait": {
       const r = await pollTask(c, "compose"); if (!r) return;
-      await setPlan(c, { composed_url: providerMedia(r.video_url) }, { stage: "scale_submit" }); return;
+      await setPlan(c, { composed_url: providerMedia(r["video_url"]) }, { stage: "scale_submit" }); return;
     }
     case "scale_submit": return submitTask(c, "scale", "fal", FAL.scale, scaleInput(plan.composed_url));
     case "scale_wait": {
       const r = await pollTask(c, "scale"); if (!r) return;
-      await setPlan(c, { vertical_url: providerMedia(r.video?.url) }, { stage: "captions_submit" }); return;
+      await setPlan(c, { vertical_url: providerMedia(r["video"]?.url) }, { stage: "captions_submit" }); return;
     }
     case "captions_submit": return submitTask(c, "captions", "fal", FAL.captions, captionInput(plan.vertical_url, job.language));
     case "captions_wait": {
       const r = await pollTask(c, "captions"); if (!r) return;
-      if (!(Number(r.subtitle_count) > 0)) throw new Error("Провайдер не создал субтитры");
-      await setPlan(c, { render_url: providerMedia(r.video?.url), subtitle_count: r.subtitle_count }, { stage: "finalize" }); return;
+      if (!(Number(r["subtitle_count"]) > 0)) throw new Error("Провайдер не создал субтитры");
+      await setPlan(c, { render_url: providerMedia(r["video"]?.url), subtitle_count: r["subtitle_count"] }, { stage: "finalize" }); return;
     }
     case "finalize": {
       const url: string | undefined = plan.render_url;
