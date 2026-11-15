@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
-import { addUrlSource, createJob, getOutputUrl, jobAction } from "@/lib/jobs.functions";
+import { addUrlSource, createJob, getOutputUrl, jobAction, pickClip, selectCandidates } from "@/lib/jobs.functions";
 import { LANGS, MODES, PERMISSIONS, stagesFor } from "@/lib/job-meta";
 import { useEvents, useJobs, useSources, type Job } from "@/hooks/use-jobs";
 import { StatusBadge } from "./AppShell";
@@ -179,6 +179,8 @@ export function JobDetails({ job }: { job: Job }) {
   const events = useEvents(job.id).data ?? [];
   const act = useServerFn(jobAction);
   const dl = useServerFn(getOutputUrl);
+  const selCands = useServerFn(selectCandidates);
+  const pick = useServerFn(pickClip);
   const [script, setScript] = useState(job.script ?? "");
   const [caption, setCaption] = useState(job.caption ?? "");
   useEffect(() => { setScript(job.script ?? ""); setCaption(job.caption ?? ""); }, [job.id, job.script, job.caption]);
