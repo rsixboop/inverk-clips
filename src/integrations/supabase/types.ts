@@ -62,12 +62,14 @@ export type Database = {
           audio_mode: string
           caption: string | null
           created_at: string
+          deadline_at: string
           error: string | null
           failed_stage: string | null
           finished_at: string | null
           id: string
           idempotency_key: string
           language: string
+          lease_token: string | null
           lock_until: string | null
           mode: string
           next_attempt_at: string
@@ -87,6 +89,7 @@ export type Database = {
           source_id: string | null
           stage: string
           status: string
+          submit_state: string | null
           target_seconds: number
           updated_at: string
           user_id: string
@@ -97,12 +100,14 @@ export type Database = {
           audio_mode?: string
           caption?: string | null
           created_at?: string
+          deadline_at?: string
           error?: string | null
           failed_stage?: string | null
           finished_at?: string | null
           id?: string
           idempotency_key: string
           language?: string
+          lease_token?: string | null
           lock_until?: string | null
           mode: string
           next_attempt_at?: string
@@ -122,6 +127,7 @@ export type Database = {
           source_id?: string | null
           stage?: string
           status?: string
+          submit_state?: string | null
           target_seconds?: number
           updated_at?: string
           user_id?: string
@@ -132,12 +138,14 @@ export type Database = {
           audio_mode?: string
           caption?: string | null
           created_at?: string
+          deadline_at?: string
           error?: string | null
           failed_stage?: string | null
           finished_at?: string | null
           id?: string
           idempotency_key?: string
           language?: string
+          lease_token?: string | null
           lock_until?: string | null
           mode?: string
           next_attempt_at?: string
@@ -157,6 +165,7 @@ export type Database = {
           source_id?: string | null
           stage?: string
           status?: string
+          submit_state?: string | null
           target_seconds?: number
           updated_at?: string
           user_id?: string
