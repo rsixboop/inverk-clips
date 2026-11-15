@@ -12,7 +12,7 @@ export const Route = createFileRoute("/api/public/jobs/tick")({
         if (authFailure) return authFailure;
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { data } = await supabaseAdmin.from("jobs").select("id").in("status", ["queued", "running"]).lte("next_attempt_at", new Date().toISOString()).order("updated_at").limit(5);
-        for (const j of data ?? []) await processJob(supabaseAdmin, j.id);
+        for (const j of data ?? []) for (let i = 0; i < 4; i++) await processJob(supabaseAdmin, j.id); // run consecutive due stages
         return Response.json({ processed: data?.length ?? 0 });
       },
     },
