@@ -18,7 +18,7 @@ export function buildEdit(i: RenderInput) {
     asset: {
       type: "rich-caption",
       src: vo ? "alias://voiceover" : "alias://footage",
-      font: { family: "Montserrat ExtraBold", size: 64, color: "#ffffff", weight: 800 },
+      font: { size: 64, color: "#ffffff", weight: 800 },
       stroke: { width: 4, color: "#000000", opacity: 1 },
       active: { font: { color: "#c6ff3d" } },
       animation: { style: "highlight" },
