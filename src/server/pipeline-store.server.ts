@@ -17,7 +17,7 @@ export function supabaseStore(db: SupabaseClient<Database>): Store {
     },
     async update(job, token, p) {
       const { data, error } = await db.from("jobs").update({ ...p, updated_at: new Date().toISOString() } as any)
-        .eq("id", job.id).eq("lease_token", token).in("status", ["queued", "running"]).select("id");
+        .eq("id", job.id).eq("user_id", job.user_id).eq("lease_token", token).gt("lock_until", new Date().toISOString()).in("status", ["queued", "running"]).select("id");
       if (error) throw new Error(error.message);
       return (data ?? []).length === 1;
     },
@@ -37,12 +37,6 @@ export function supabaseStore(db: SupabaseClient<Database>): Store {
     async library(userId) {
       const { data } = await db.from("sources").select("*").eq("user_id", userId).in("kind", ["upload", "direct_url", "stock"]).eq("status", "ready").neq("permission", "unknown").order("created_at", { ascending: false }).limit(30);
       return (data ?? []) as Src[];
-    },
-    async upsertStock(userId, row) {
-      const { data: ex } = await db.from("sources").select("*").eq("user_id", userId).eq("provider", "pexels").eq("external_id", row.external_id).maybeSingle();
-      if (ex) return ex as Src;
-      const { data } = await db.from("sources").insert({ ...row, user_id: userId, kind: "stock", provider: "pexels" } as any).select("*").single();
-      return (data as Src) ?? null;
     },
     async setSourceDuration(userId, id, d) { await db.from("sources").update({ duration_s: d }).eq("id", id).eq("user_id", userId); },
     async signFootage(userId, path) {

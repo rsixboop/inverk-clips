@@ -3,10 +3,10 @@ import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { runJobStage } from "@/server/pipeline.server";
-import { shotstackConfigured, shotstackEnv } from "@/lib/shotstack";
+import { falConfigured } from "@/lib/providers/fal";
+import { atlasConfigured } from "@/lib/providers/atlas";
 import { tavilyConfigured } from "@/lib/providers/tavily";
-import { pexelsConfigured } from "@/lib/providers/pexels";
-import { vizardConfigured } from "@/lib/providers/vizard";
+
 import { classifyUrl, inspectDirectVideo, parsePublicUrl } from "@/lib/url-guard";
 
 function origin() {
@@ -27,24 +27,28 @@ export const tickJobs = createServerFn({ method: "POST" }).middleware([requireSu
 });
 
 export const providerStatus = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async () => ({
-  shotstack: shotstackConfigured(), shotstackEnv: shotstackEnv(), tavily: tavilyConfigured(), pexels: pexelsConfigured(), vizard: vizardConfigured(), ai: !!process.env["LOVABLE_API_KEY"], tiktok: false, webhookSigning: !!process.env["WEBHOOK_SIGNING_SECRET"],
+  fal: falConfigured(), atlas: atlasConfigured(), tavily: tavilyConfigured(), ai: !!process.env["LOVABLE_API_KEY"], tiktok: false, webhookSigning: !!process.env["WEBHOOK_SIGNING_SECRET"],
 }));
 
 const createSchema = z.object({
   idempotencyKey: z.string().min(8).max(64), mode: z.enum(["niche", "link", "mixed"]), prompt: z.string().max(2000),
   language: z.enum(["en", "ru", "uk"]), targetSeconds: z.number().int().min(10).max(90), audioMode: z.enum(["voiceover", "original"]),
-  reviewBeforeRender: z.boolean(), approveSources: z.boolean(), route: z.enum(["compose", "vizard"]), nicheId: z.string().uuid().nullable(), sourceId: z.string().uuid().nullable(),
+  reviewBeforeRender: z.boolean(), approveSources: z.boolean(), route: z.enum(["compose", "clip"]), nicheId: z.string().uuid().nullable(), sourceId: z.string().uuid().nullable(),
 });
 export const createJob = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((d: unknown) => createSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { data: existing } = await context.supabase.from("jobs").select("id").eq("idempotency_key", data.idempotencyKey).maybeSingle();
     if (existing) return { id: existing.id, duplicate: true };
-    const { data: row, error } = await context.supabase.from("jobs").insert({
+    const { data: row, error } = await (await admin()).from("jobs").insert({
+      workflow_version: 2,
       user_id: context.userId, idempotency_key: data.idempotencyKey, mode: data.mode, prompt: data.prompt, language: data.language,
       target_seconds: data.targetSeconds, audio_mode: data.audioMode, review_before_render: data.reviewBeforeRender, approve_sources: data.approveSources, route: data.mode === "link" ? data.route : "compose", niche_id: data.nicheId, source_id: data.sourceId,
     }).select("id").single();
     if (error) {
-      if (error.code === "23505") return { id: (await context.supabase.from("jobs").select("id").eq("idempotency_key", data.idempotencyKey).single()).data!.id, duplicate: true };
+      if (error.code === "23505") {
+        const duplicate = (await context.supabase.from("jobs").select("id").eq("idempotency_key", data.idempotencyKey).maybeSingle()).data;
+        if (duplicate) return { id: duplicate.id, duplicate: true };
+      }
       throw new Error(error.message);
     }
     await (await admin()).from("job_events").insert({ job_id: row.id, user_id: context.userId, stage: "validate", message: "Задача создана" });
@@ -56,33 +60,34 @@ export const jobAction = createServerFn({ method: "POST" }).middleware([requireS
   .handler(async ({ data, context }) => {
     const { data: job } = await context.supabase.from("jobs").select("*").eq("id", data.jobId).eq("user_id", context.userId).maybeSingle();
     if (!job) throw new Error("Задача не найдена");
+    if (job.workflow_version !== 2 && data.action !== "cancel") throw new Error("Задача старого провайдера: файлы сохранены. Создайте новую задачу; платный повтор отключён.");
     const now = new Date().toISOString();
     const deadline = new Date(Date.now() + 3 * 3600e3).toISOString();
     // clearing lease_token fences out any in-flight worker: its later writes match 0 rows and are discarded
     const upd: Record<string, unknown> = { updated_at: now, next_attempt_at: now, lock_until: null, lease_token: null };
-    const ambiguous = job.submit_state === "submitting" && !job.render_id && !job.provider_project_id;
+    const plan = (job.plan ?? {}) as any;
+    const ambiguous = Object.values(plan.provider_tasks ?? {}).some((t: any) => t.state === "submitting" && !t.id);
     let msg = "";
     const active = ["queued", "running", "review", "paused", "blocked"].includes(job.status);
     switch (data.action) {
       case "cancel": if (!active) throw new Error("Задача уже завершена");
         Object.assign(upd, { status: "cancelled", finished_at: now });
-        msg = job.render_id && job.stage === "render_wait" ? "Отменено. Shotstack не поддерживает отмену — начатый рендер может доиграть у провайдера, но результат не будет использован." : "Отменено пользователем"; break;
+        msg = "Отменено пользователем. Уже принятые провайдером операции могут завершиться и списать оплату; результат не будет использован."; break;
       case "pause": if (!["queued", "running"].includes(job.status)) throw new Error("Нечего ставить на паузу");
         upd["status"] = "paused"; msg = "Пауза"; break;
       case "resume": if (job.status !== "paused") throw new Error("Задача не на паузе");
         upd["status"] = "running"; msg = "Продолжено"; break;
       case "retry": if (!["failed", "blocked", "cancelled"].includes(job.status)) throw new Error("Повтор доступен только после ошибки/блокировки/отмены");
         if (ambiguous && !data.confirmResubmit) throw new Error("Исход прошлой платной отправки неизвестен. Проверьте кабинет провайдера и подтвердите повторную отправку — возможна двойная оплата.");
-        Object.assign(upd, { status: "running", stage: job.failed_stage ?? job.stage, error: null, attempts: 0, finished_at: null, deadline_at: deadline, ...(ambiguous ? { submit_state: null } : {}) });
+        Object.assign(upd, { status: "running", stage: job.failed_stage ?? job.stage, error: null, attempts: 0, finished_at: null, deadline_at: deadline, ...(ambiguous ? { submit_state: null, plan: { ...plan, provider_tasks: Object.fromEntries(Object.entries(plan.provider_tasks ?? {}).filter(([, t]: any) => t.state !== "submitting")) } } : {}) });
         msg = `Повтор шага «${job.failed_stage ?? job.stage}»${ambiguous ? " — пользователь подтвердил повторную платную отправку" : job.render_id ? " (существующий рендер не дублируется)" : ""}`; break;
-      case "regenerate": if (job.status === "running" && ["render_wait", "finalize"].includes(job.stage)) throw new Error("Идёт рендер — сначала отмените");
-        if (job.route === "vizard") throw new Error("Для ИИ-нарезки выберите другой клип из кандидатов");
-        Object.assign(upd, { status: "running", stage: job.plan ? "plan" : "validate", render_id: null, submit_state: null, error: null, attempts: 0, finished_at: null, deadline_at: deadline }); msg = "Перегенерация сценария"; break;
+      case "regenerate": if (["running", "queued"].includes(job.status)) throw new Error("Идёт рендер — сначала отмените");
+        if (job.route === "clip") throw new Error("Для ИИ-нарезки выберите другой клип из кандидатов");
+        Object.assign(upd, { status: "running", stage: job.plan ? "plan" : "validate", plan: { ...plan, provider_tasks: {}, trimmed: [], trim_index: 0, audio_url: null, speech_duration: null }, render_id: null, submit_state: null, error: null, attempts: 0, finished_at: null, deadline_at: deadline }); msg = "Перегенерация сценария"; break;
       case "approve": if (job.status !== "review") throw new Error("Сценарий не ожидает проверки");
         upd["status"] = "running"; msg = "Утверждено, продолжаю"; break;
       case "rerender": if (!["succeeded", "failed"].includes(job.status)) throw new Error("Повторный рендер — только для завершённых задач");
-        if (job.route === "vizard") { Object.assign(upd, { status: "running", stage: "finalize", error: null, attempts: 0, finished_at: null, deadline_at: deadline }); msg = "Сохраняю выбранный клип Vizard (без новой оплаты)"; break; }
-        Object.assign(upd, { status: "running", stage: "render_submit", render_id: null, submit_state: null, error: null, attempts: 0, finished_at: null, deadline_at: deadline }); msg = "Новый рендер с текущим сценарием (будет списана новая минута рендера)"; break;
+        Object.assign(upd, { status: "running", stage: job.audio_mode === "voiceover" ? "tts_submit" : "render_submit", plan: { ...plan, provider_tasks: {}, trimmed: [], trim_index: 0, audio_url: null, speech_duration: null }, render_id: null, submit_state: null, error: null, attempts: 0, finished_at: null, deadline_at: deadline }); msg = "Новая сборка: операции провайдеров оплачиваются заново"; break;
     }
     const db = await admin(); // internal fields are not user-writable; ownership verified above and re-checked here
     const { data: rows, error } = await db.from("jobs").update(upd as any).eq("id", job.id).eq("user_id", context.userId).eq("updated_at", job.updated_at).select("id");
@@ -110,12 +115,12 @@ export const pickClip = createServerFn({ method: "POST" }).middleware([requireSu
   .inputValidator((d: unknown) => z.object({ jobId: z.string().uuid(), index: z.number().int().min(0).max(50) }).parse(d))
   .handler(async ({ data, context }) => {
     const { data: job } = await context.supabase.from("jobs").select("*").eq("id", data.jobId).eq("user_id", context.userId).maybeSingle();
-    if (!job || job.route !== "vizard") throw new Error("Задача не найдена");
-    if (!["review", "succeeded", "failed"].includes(job.status)) throw new Error("Сейчас клип выбрать нельзя");
+    if (!job || job.route !== "clip" || job.workflow_version !== 2) throw new Error("Задача не найдена");
+    if (job.status !== "review") throw new Error("Сейчас клип выбрать нельзя");
     const plan = (job.plan ?? {}) as any;
-    const clip = plan.vizard_clips?.[data.index];
+    const clip = plan.moments?.[data.index];
     if (!clip) throw new Error("Нет такого клипа");
-    const { data: rows } = await (await admin()).from("jobs").update({ plan: { ...plan, chosen_clip: data.index, title: clip.title }, updated_at: new Date().toISOString() })
+    const { data: rows } = await (await admin()).from("jobs").update({ script: clip.transcript, plan: { ...plan, chosen_clip: data.index, title: clip.title, timeline: [{ source_id: job.source_id, trim: clip.start, length: clip.durationS }] }, updated_at: new Date().toISOString() })
       .eq("id", job.id).eq("user_id", context.userId).eq("updated_at", job.updated_at).select("id");
     if (!rows?.length) throw new Error("Состояние задачи изменилось — обновите");
     return { ok: true };
@@ -136,7 +141,7 @@ export const addUrlSource = createServerFn({ method: "POST" }).middleware([requi
     const u = parsePublicUrl(data.url);
     let kind: string = classifyUrl(u);
     let status = "ready", status_note = "", mime: string | null = null, bytes: number | null = null, url = u.toString();
-    if (kind === "youtube" || kind === "twitch") { status_note = "Доступно только для ИИ-нарезки через Vizard (официальный API принимает ссылку). Приложение само видео не скачивает."; }
+    if (kind === "youtube" || kind === "twitch") { status = "reference"; status_note = "Прямой импорт YouTube/Twitch без подписки не подтверждён. Ссылка сохранена как ориентир; загрузите разрешённый MP4/MOV."; }
     else if (kind === "channel") { status = "reference"; status_note = "Канал сохранён как ссылка-ориентир. Это не видео: укажите конкретный ролик/запись. Запись прямых эфиров не поддерживается."; }
     else {
       try { const info = await inspectDirectVideo(url); kind = "direct_url"; url = info.url; mime = info.mime; bytes = info.bytes; }

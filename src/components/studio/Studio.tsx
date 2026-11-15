@@ -19,10 +19,10 @@ function Seg<T extends string>({ value, onChange, items }: { value: T; onChange:
   return (
     <div className="flex rounded-md border border-border bg-muted p-0.5">
       {items.map((i) => (
-        <button key={i.key} type="button" onClick={() => onChange(i.key)}
+        <Button variant="ghost" key={i.key} type="button" onClick={() => onChange(i.key)}
           className={`flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors ${value === i.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
           {i.label}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -42,7 +42,7 @@ export function Studio({ userId }: { userId: string }) {
   const [audioMode, setAudioMode] = useState<"voiceover" | "original">("voiceover");
   const [review, setReview] = useState(true);
   const [approveSources, setApproveSources] = useState(true);
-  const [route, setRoute] = useState<"vizard" | "compose">("vizard");
+  const [route, setRoute] = useState<"clip" | "compose">("clip");
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [permission, setPermission] = useState<"owned" | "licensed" | "permitted" | "unknown">("owned");
@@ -98,11 +98,11 @@ export function Studio({ userId }: { userId: string }) {
         <div className="space-y-2">
           {mode === "link" && (
             <div className="space-y-1.5">
-              <Seg value={route} onChange={setRoute} items={[{ key: "vizard", label: "ИИ-нарезка (Vizard)" }, { key: "compose", label: "Сборка (Shotstack)" }] as const} />
-              <p className="text-[11px] text-muted-foreground">{route === "vizard" ? "Vizard анализирует речь и сцены и сам режет вертикальные клипы с субтитрами. Платный сервис; обработка — от минут до десятков минут." : "Ручная сборка выбранного файла с ИИ-озвучкой и субтитрами. Нарезка по отрезкам, без анализа содержания."}</p>
+              <Seg value={route} onChange={setRoute} items={[{ key: "clip", label: "ИИ-нарезка" }, { key: "compose", label: "Сборка" }] as const} />
+              <p className="text-[11px] text-muted-foreground">{route === "clip" ? "Моменты по речи с таймкодами и доступным кадрам. Центрированное 9:16, субтитры. Оплата по использованию fal.ai / Atlas Cloud." : "Ручная сборка выбранного файла с ИИ-озвучкой и субтитрами. Нарезка по отрезкам, без анализа содержания."}</p>
             </div>
           )}
-          <div className="label-xs">Футаж {mode !== "link" && <span className="normal-case tracking-normal">— необязателен: будет найден в библиотеке и на Pexels</span>}</div>
+          <div className="label-xs">Футаж {mode !== "link" && <span className="normal-case tracking-normal">— поиск в вашей библиотеке; геймплей нужен с разрешением</span>}</div>
           <Seg value={permission} onChange={setPermission} items={PERMISSIONS.filter((p) => p.key !== "unknown")} />
           <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border px-3 py-3 text-xs text-muted-foreground hover:border-primary hover:text-foreground">
             <Upload className="h-4 w-4" /> {busy === "upload" ? "Загрузка…" : "Загрузить MP4/MOV (до 200 МБ)"}
@@ -125,7 +125,7 @@ export function Studio({ userId }: { userId: string }) {
           <Slider min={15} max={90} step={5} value={[seconds]} onValueChange={(v) => setSeconds(v[0] ?? 40)} />
         </div>
         {mode !== "link" && <label className="flex items-center justify-between text-xs"><span>Утвердить найденный футаж</span><Switch checked={approveSources} onCheckedChange={setApproveSources} /></label>}
-        <label className="flex items-center justify-between text-xs"><span>{mode === "link" && route === "vizard" ? "Проверить выбранный клип перед сохранением" : "Проверить сценарий перед рендером"}</span><Switch checked={review} onCheckedChange={setReview} /></label>
+        <label className="flex items-center justify-between text-xs"><span>{mode === "link" && route === "clip" ? "Проверить выбранный клип перед сохранением" : "Проверить сценарий перед рендером"}</span><Switch checked={review} onCheckedChange={setReview} /></label>
         <Button onClick={submit} disabled={busy === "create" || !prompt.trim()} className="glow mt-auto">
           <Sparkles className="h-4 w-4" /> {busy === "create" ? "Создаю…" : "Создать ролик"}
         </Button>
@@ -190,7 +190,7 @@ export function JobDetails({ job }: { job: Job }) {
 
   async function run(action: "cancel" | "pause" | "resume" | "retry" | "regenerate" | "approve" | "rerender") {
     let confirmResubmit: boolean | undefined;
-    if (action === "retry" && job.submit_state === "submitting" && !job.render_id && !job.provider_project_id) {
+    if (action === "retry" && Object.values((job.plan as any)?.provider_tasks ?? {}).some((t: any) => t.state === "submitting" && !t.id)) {
       confirmResubmit = window.confirm("Исход прошлой платной отправки неизвестен — провайдер мог уже принять задачу. Проверьте его кабинет. Повторная отправка может списать оплату дважды. Отправить снова?");
       if (!confirmResubmit) return;
     }
@@ -204,7 +204,7 @@ export function JobDetails({ job }: { job: Job }) {
   async function pickClip(i: number) {
     try { await pick({ data: { jobId: job.id, index: i } }); } catch (e) { return void toast.error((e as Error).message); }
     qc.invalidateQueries({ queryKey: ["jobs"] });
-    if (job.status === "succeeded") toast.message("Клип выбран — нажмите «Перерендер», чтобы сохранить его (без новой оплаты Vizard)");
+    if (job.status === "succeeded") toast.message("Клип выбран — нажмите «Перерендер», чтобы сохранить его (с новой оплатой обработки)");
   }
   async function save() {
     const { error } = await supabase.from("jobs").update({ script, caption }).eq("id", job.id);
@@ -226,11 +226,12 @@ export function JobDetails({ job }: { job: Job }) {
         {job.status === "review" && <Button size="sm" onClick={() => run("approve")}><Check className="h-4 w-4" /> {job.stage === "plan" ? "Утвердить футаж" : job.stage === "finalize" ? "Сохранить клип" : "Рендерить"}</Button>}
         {active && <Button size="sm" variant="secondary" onClick={() => run("pause")}><Pause className="h-4 w-4" /> Пауза</Button>}
         {job.status === "paused" && <Button size="sm" variant="secondary" onClick={() => run("resume")}><Play className="h-4 w-4" /> Продолжить</Button>}
-        {["failed", "blocked", "cancelled"].includes(job.status) && <Button size="sm" variant="secondary" onClick={() => run("retry")}><RotateCcw className="h-4 w-4" /> Повторить шаг</Button>}
-        {job.plan && job.route !== "vizard" && !(active && ["render_wait", "finalize"].includes(job.stage)) && <Button size="sm" variant="secondary" onClick={() => run("regenerate")}><Sparkles className="h-4 w-4" /> Новый сценарий</Button>}
-        {["succeeded", "failed"].includes(job.status) && job.script && <Button size="sm" variant="secondary" onClick={() => confirm(job.route === "vizard" ? "Сохранить выбранный клип Vizard?" : "Новый рендер спишет минуту рендера. Продолжить?") && run("rerender")}><Clapperboard className="h-4 w-4" /> {job.route === "vizard" ? "Сохранить клип" : "Перерендер"}</Button>}
+        {job.workflow_version === 2 && ["failed", "blocked", "cancelled"].includes(job.status) && <Button size="sm" variant="secondary" onClick={() => run("retry")}><RotateCcw className="h-4 w-4" /> Повторить шаг</Button>}
+        {job.workflow_version === 2 && job.plan && job.route !== "clip" && !active && <Button size="sm" variant="secondary" onClick={() => run("regenerate")}><Sparkles className="h-4 w-4" /> Новый сценарий</Button>}
+        {job.workflow_version === 2 && ["succeeded", "failed"].includes(job.status) && job.script && <Button size="sm" variant="secondary" onClick={() => confirm(job.route === "clip" ? "Собрать выбранный момент заново?" : "Новая обработка спишет оплату провайдеров. Продолжить?") && run("rerender")}><Clapperboard className="h-4 w-4" /> {job.route === "clip" ? "Сохранить клип" : "Перерендер"}</Button>}
         {["queued", "running", "review", "paused", "blocked"].includes(job.status) && <Button size="sm" variant="destructive" onClick={() => run("cancel")}><Square className="h-4 w-4" /> Стоп</Button>}
       </div>
+      {job.workflow_version !== 2 && <p className="text-xs text-warning">История старого провайдера. Готовый файл сохранён; для новой обработки создайте задачу.</p>}
       {job.error && <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-xs">{job.error}</div>}
 
       <ol className="space-y-1">
@@ -248,7 +249,7 @@ export function JobDetails({ job }: { job: Job }) {
 
       {job.plan && (
         <div className="space-y-2">
-          <div className="label-xs">{job.route === "vizard" ? "Транскрипт клипа" : "Сценарий озвучки"}</div>
+          <div className="label-xs">{job.route === "clip" ? "Транскрипт клипа" : "Сценарий озвучки"}</div>
           <Textarea value={script} onChange={(e) => setScript(e.target.value)} rows={5} className="text-xs" />
           <div className="label-xs">Подпись для TikTok</div>
           <Textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={3} className="text-xs" />
@@ -257,7 +258,7 @@ export function JobDetails({ job }: { job: Job }) {
         </div>
       )}
       {plan.gap && <div className="rounded-md border border-warning/40 bg-warning/10 p-2.5 text-xs">{plan.gap}</div>}
-      {plan.candidates?.length > 0 && job.route !== "vizard" && (
+      {plan.candidates?.length > 0 && job.route !== "clip" && (
         <div className="space-y-1.5">
           <div className="label-xs">Футаж-кандидаты {job.status === "review" && job.stage === "plan" && "— отметьте и утвердите"}</div>
           {plan.candidates.map((c: any, i: number) => (
@@ -271,12 +272,12 @@ export function JobDetails({ job }: { job: Job }) {
           ))}
         </div>
       )}
-      {plan.vizard_clips?.length > 0 && (
+      {plan.moments?.length > 0 && (
         <div className="space-y-1.5">
-          <div className="label-xs">Клипы Vizard</div>
-          {plan.vizard_clips.map((c: any, i: number) => (
-            <button key={i} type="button" onClick={() => pickClip(i)} disabled={active} className={`block w-full rounded border p-2 text-left text-xs ${plan.chosen_clip === i ? "border-primary" : "border-border"}`}>
-              <b>{i + 1}. {c.title}</b> <span className="font-mono text-muted-foreground">{Math.round(c.durationS)} с · viral {c.viralScore}</span>
+          <div className="label-xs">Моменты по содержанию</div>
+          {plan.moments.map((c: any, i: number) => (
+            <button key={i} type="button" onClick={() => pickClip(i)} disabled={job.status !== "review"} className={`block w-full rounded border p-2 text-left text-xs ${plan.chosen_clip === i ? "border-primary" : "border-border"}`}>
+              <b>{i + 1}. {c.title}</b> <span className="font-mono text-muted-foreground">{Math.round(c.durationS)} с · {c.start.toFixed(1)} с</span>
               <span className="mt-0.5 block line-clamp-2 text-[11px] text-muted-foreground">{c.transcript}</span>
             </button>
           ))}

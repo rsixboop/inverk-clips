@@ -27,7 +27,6 @@ export interface Store {
   log(job: Job, stage: string, message: string, level?: string, durationMs?: number): Promise<void>;
   getSource(userId: string, id: string): Promise<Src | null>;
   library(userId: string): Promise<Src[]>;
-  upsertStock(userId: string, row: Partial<Src> & { external_id: string }): Promise<Src | null>;
   setSourceDuration(userId: string, id: string, d: number): Promise<void>;
   signFootage(userId: string, path: string): Promise<string>;
   uploadOutput(path: string, bytes: Uint8Array): Promise<void>;

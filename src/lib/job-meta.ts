@@ -1,18 +1,31 @@
-export const VIZARD_STAGES = [
-  { key: "validate", label: "Проверка источника" },
-  { key: "vizard_submit", label: "Отправка в Vizard" },
-  { key: "vizard_wait", label: "Vizard: ИИ-нарезка по содержанию" },
-  { key: "vizard_select", label: "Выбор клипа под запрос" },
-  { key: "finalize", label: "Проверка и сохранение MP4" },
-] as const;
 export const STAGES = [
   { key: "validate", label: "Проверка источника" },
   { key: "research", label: "Веб-поиск фактов (Tavily)" },
-  { key: "discover", label: "Поиск футажа: библиотека + Pexels" },
-  { key: "plan", label: "Сценарий по найденным источникам" },
-  { key: "render_submit", label: "Отправка в рендер" },
-  { key: "render_wait", label: "Рендер: озвучка, нарезка, субтитры" },
+  { key: "discover", label: "Разрешённый футаж из библиотеки" },
+  { key: "plan", label: "Сценарий с источниками" },
+  { key: "image_submit", label: "Иллюстрация: Atlas Cloud" },
+  { key: "image_wait", label: "Ожидание иллюстрации" },
+  { key: "tts_submit", label: "Озвучка: Atlas Cloud" },
+  { key: "tts_wait", label: "Ожидание озвучки" },
+  { key: "audio_metadata_submit", label: "Длительность озвучки" },
+  { key: "audio_metadata_wait", label: "Проверка длины звука" },
+  { key: "render_submit", label: "Нарезка: fal.ai" },
+  { key: "render_wait", label: "Ожидание нарезки" },
+  { key: "compose_submit", label: "Сборка кадров и звука" },
+  { key: "compose_wait", label: "Ожидание сборки" },
+  { key: "scale_submit", label: "Вертикальный H.264 1080×1920" },
+  { key: "scale_wait", label: "Ожидание кадрирования" },
+  { key: "captions_submit", label: "Субтитры: fal.ai" },
+  { key: "captions_wait", label: "Ожидание субтитров" },
   { key: "finalize", label: "Проверка и сохранение MP4" },
+] as const;
+export const CLIP_STAGES = [STAGES[0],
+  { key: "metadata_submit", label: "Метаданные и кадры" },
+  { key: "metadata_wait", label: "Проверка исходника" },
+  { key: "transcript_submit", label: "Речь и таймкоды: fal.ai" },
+  { key: "transcript_wait", label: "Ожидание транскрипта" },
+  { key: "moment_select", label: "Выбор моментов по содержанию" },
+  ...STAGES.slice(6),
 ] as const;
 export const STATUS: Record<string, { label: string; tone: "muted" | "primary" | "warning" | "destructive" | "info" }> = {
   queued: { label: "В очереди", tone: "muted" }, running: { label: "В работе", tone: "info" }, review: { label: "Ждёт проверки", tone: "warning" },
@@ -23,4 +36,4 @@ export const ACTIVE = ["queued", "running"];
 export const MODES = [{ key: "niche", label: "По нише" }, { key: "link", label: "По ссылке" }, { key: "mixed", label: "Смешанный" }] as const;
 export const LANGS = [{ key: "en", label: "English" }, { key: "ru", label: "Русский" }, { key: "uk", label: "Українська" }] as const;
 export const PERMISSIONS = [{ key: "owned", label: "Моё видео" }, { key: "licensed", label: "Лицензия" }, { key: "permitted", label: "Есть разрешение" }, { key: "unknown", label: "Не указано" }] as const;
-export const stagesFor = (route: string) => (route === "vizard" ? VIZARD_STAGES : STAGES) as readonly { key: string; label: string }[];
+export const stagesFor = (route: string) => (route === "clip" ? CLIP_STAGES : STAGES) as readonly { key: string; label: string }[];

@@ -14,18 +14,15 @@ export const Route = createFileRoute("/settings")({
 });
 
 const PROVIDERS = [
-  { id: "ai", secret: "встроено", name: "Lovable AI", what: "Поисковые запросы, оценка футажа, сценарий по найденным источникам, выбор клипа Vizard.", url: "" },
-  { id: "tavily", secret: "TAVILY_API_KEY", name: "Tavily — веб-поиск фактов", what: "Обязателен для режимов «По нише» и «Смешанный». Бесплатный тариф есть.", url: "https://app.tavily.com" },
-  { id: "pexels", secret: "PEXELS_API_KEY", name: "Pexels — стоковый футаж", what: "Бесплатный ключ. Общие кадры (город, машины); геймплей GTA не заменяет.", url: "https://www.pexels.com/api/" },
-  { id: "shotstack", secret: "SHOTSTACK_API_KEY", name: "Shotstack — сборка, ИИ-озвучка, субтитры", what: "Нужен для «По нише», «Смешанный» и «По ссылке → Сборка». Sandbox ставит водяной знак; SHOTSTACK_ENV=v1 — продакшен. Озвучка списывает их кредиты.", url: "https://dashboard.shotstack.io" },
-  { id: "vizard", secret: "VIZARD_API_KEY", name: "Vizard — ИИ-нарезка по ссылке", what: "Только «По ссылке → ИИ-нарезка». Платно (минуты аккаунта), обработка от минут до десятков минут. YouTube, запись Twitch, прямой MP4, файл.", url: "https://vizard.ai" },
+  { id: "ai", secret: "встроено", name: "Lovable AI", what: "План и выбор материалов по найденным источникам.", url: "" },
+  { id: "tavily", secret: "TAVILY_API_KEY", name: "Tavily", what: "Факты и ссылки. Веб-поиск не даёт права скачивать или использовать видео.", url: "https://app.tavily.com" },
+  { id: "fal", secret: "FAL_KEY", name: "fal.ai", what: "Транскрипт, таймкоды, нарезка, сборка, 9:16 и субтитры. Оплата по использованию.", url: "https://fal.ai/dashboard/keys" },
+  { id: "atlas", secret: "ATLAS_CLOUD_API_KEY", name: "Atlas Cloud", what: "Озвучка; иллюстрации только по явному запросу. Используется баланс аккаунта, без новой подписки.", url: "https://www.atlascloud.ai/console" },
 ] as const;
-
 const MODES = [
-  { name: "По ссылке → ИИ-нарезка (самый короткий путь к первому MP4)", need: ["vizard"] },
-  { name: "По ссылке → Сборка своего файла", need: ["shotstack"] },
-  { name: "По нише (без своего видео)", need: ["tavily", "pexels", "shotstack"] },
-  { name: "Смешанный (своё видео + факты)", need: ["tavily", "shotstack"] },
+  { name: "Видео → нарезка с оригинальным звуком", need: ["fal"] },
+  { name: "Видео → нарезка / сборка с озвучкой", need: ["fal", "atlas"] },
+  { name: "По нише / Смешанный → факты + своё видео", need: ["tavily", "fal", "atlas"] },
 ] as const;
 
 function Settings() {
@@ -39,11 +36,11 @@ function Settings() {
         {MODES.map((m) => (
           <div key={m.name} className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5 text-sm">
             <span>{m.name}</span>
-            <span className="flex gap-1">{m.need.map((n) => <span key={n} className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${ok(n) ? "bg-primary/15 text-primary" : "bg-warning/15 text-warning"}`}>{PROVIDERS.find((p) => p.id === n)!.secret}</span>)}</span>
+            <span className="flex gap-1">{m.need.map((n) => <span key={n} className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${ok(n) ? "bg-primary/15 text-primary" : "bg-warning/15 text-warning"}`}>{PROVIDERS.find((p) => p.id === n)?.secret}</span>)}</span>
           </div>
         ))}
         <div className="px-4 py-3 text-xs text-muted-foreground">
-          Как добавить ключ: в редакторе Lovable откройте <b>Project Settings → Secrets</b>, нажмите «Add secret», введите точное имя (например <span className="font-mono">VIZARD_API_KEY</span>) и значение. Не вставляйте ключи в чат или в поля этого приложения — они хранятся только на сервере.
+          Как добавить ключ: в редакторе Lovable откройте <b>Project Settings → Secrets</b>, нажмите «Add secret», введите точное имя (например <span className="font-mono">FAL_KEY</span>) и значение. Не вставляйте ключи в чат или в поля этого приложения — они хранятся только на сервере.
         </div>
       </div>
       <div className="panel overflow-hidden">
@@ -61,7 +58,7 @@ function Settings() {
         <div className="label-xs">Фоновая обработка</div>
         <p>Пока вкладка открыта, задачи продвигаются каждые ~5 с. После закрытия вкладки их продвигает фоновый планировщик раз в 2 минуты — но только у опубликованного приложения. В закрытом предпросмотре без публикации работа идёт лишь при открытой вкладке.</p>
         <div className="label-xs pt-2">Не поддерживается</div>
-        <p>Запись прямых эфиров, каналы как источник видео (только ориентир), обход DRM/логинов, публикация в соцсети, мульти-аккаунты (только модель данных).</p>
+        <p>Запись прямых эфиров, YouTube/Twitch как прямой импорт (загрузите разрешённый файл), каналы как источник видео (только ориентир), обход DRM/логинов, публикация в соцсети, мульти-аккаунты (только модель данных).</p>
       </div>
     </div>
   );
