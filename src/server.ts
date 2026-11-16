@@ -47,18 +47,36 @@ function isH3SwallowedErrorBody(body: string): boolean {
 // Hosting compresses every response at the edge. Never compress a body (gzip, brotli,
 // CompressionStream) or set content-encoding here or in a server route: the body gets encoded
 // twice and renders garbled.
+type WaitUntil = (p: Promise<unknown>) => void;
+// Background continuation after the response: raw Worker ctx, srvx/nitro request.waitUntil, or the
+// workerd built-in module. Returns null in the Vite dev server (route fallback handles it there).
+async function resolveWaitUntil(request: Request, ctx: unknown): Promise<WaitUntil | null> {
+  const c = ctx as { waitUntil?: WaitUntil } | null;
+  if (typeof c?.waitUntil === "function") return (p) => c.waitUntil!(p);
+  const r = request as Request & { waitUntil?: WaitUntil };
+  if (typeof r.waitUntil === "function") return (p) => r.waitUntil!(p);
+  try {
+    const spec = "cloudflare:workers";
+    const m = (await import(/* @vite-ignore */ spec)) as { waitUntil?: WaitUntil };
+    if (typeof m.waitUntil === "function") return m.waitUntil;
+  } catch { /* not on workerd */ }
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       // Scheduled job tick: acknowledge at once, keep advancing jobs after the response (waitUntil ~30s).
-      const waitUntil = (ctx as { waitUntil?: (p: Promise<unknown>) => void } | null)?.waitUntil;
-      if (waitUntil && request.method === "POST" && new URL(request.url).pathname === "/api/public/jobs/tick") {
+      if (request.method === "POST" && new URL(request.url).pathname === "/api/public/jobs/tick") {
+        const waitUntil = await resolveWaitUntil(request, ctx);
+        if (waitUntil) {
         const { authenticateCronRequest } = await import("./integrations/supabase/cron-auth");
         const denied = await authenticateCronRequest(request);
         if (denied) return denied;
         const { drainJobs } = await import("./server/drain.server");
-        waitUntil.call(ctx, drainJobs(25_000).catch((e) => console.error("drain failed", e)));
+        waitUntil(drainJobs(25_000).catch((e) => console.error("drain failed", e)));
         return Response.json({ accepted: true }, { status: 202 });
+        }
       }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
