@@ -4,6 +4,10 @@ import { alignVoice, normalizePlan, validatePlan, STORY_BUDGET_USD } from "./sto
 import { decodeWav, encodeWav16, mixNarratorFirst, wavDuration } from "@/lib/wav";
 import { narrationCoverage } from "./story.server";
 import { processJob, type Deps, type Job, type Store } from "./pipeline.server";
+import { readFileSync } from "node:fs";
+import { FAL, readCapability } from "@/lib/providers/fal";
+import { inspectMp4 } from "@/lib/mp4-inspect";
+import { muxClipsWithPcm, readVideoTrack } from "@/lib/mp4-mux";
 
 const scene = (o: any = {}) => ({ purpose: "p", where: "Los Santos street, midday", who: ["actor"], action: "runs to the garage", camera: "third-person chase cam",
   start_state: { car: "outside", door: "open" }, end_state: { car: "outside", door: "open" }, changes: [], props: "", narration: "I needed a place.", narration_support: ["action"],
@@ -65,7 +69,7 @@ describe("mixer", () => {
 });
 
 describe("story state machine (fixtures)", () => {
-  function mem(job: Partial<Job>) {
+  function mem(job: Partial<Job>, wavAsset: Uint8Array = new Uint8Array(), uploads: string[] = []) {
     const row = { id: "j", user_id: "u", status: "running", stage: "validate", route: "story", workflow_version: 2, prompt: "gta", language: "en", attempts: 0, render_attempt: 0,
       plan: { budget_usd: STORY_BUDGET_USD, spend_usd: 0 }, next_attempt_at: new Date(0).toISOString(), deadline_at: new Date(Date.now() + 3600e3).toISOString(), lock_until: null, lease_token: null, ...job } as any as Job;
     const store: Store = {
@@ -75,7 +79,7 @@ describe("story state machine (fixtures)", () => {
       async recordOrphan() {}, async log() {}, async getSource() { return null; }, async library() { return []; }, async setSourceDuration() {},
       async signFootage() { return ""; }, async uploadOutput() {}, async removeOutput() {}, async uploadAsset(p: string) { uploads.push(p); }, async signAsset(p) { return "https://s/" + p; }, async downloadAsset() { return wavAsset; },
     };
-    return { row, store };
+    return { row, store, uploads };
   }
   const deps = (o: Partial<Deps>): Deps => ({ ai: vi.fn(), tavilyConfigured: () => true, tavilySearch: vi.fn() as any, falConfigured: () => true, atlasConfigured: () => false,
     falSubmit: vi.fn() as any, falPoll: vi.fn() as any, atlasSubmit: vi.fn() as any, atlasPoll: vi.fn() as any, inspectDirectVideo: vi.fn() as any, fetchOutput: vi.fn() as any, fetchMedia: vi.fn() as any, signJob: async () => "", now: () => Date.now(), ...o });
@@ -143,6 +147,72 @@ describe("story state machine (fixtures)", () => {
     Object.assign(m.row.plan as any, { cur: 1, retry: 1, frames: [{ url: "u" }], provider_tasks: { frame1_r1: { provider: "fal", model: "fal-ai/nano-banana/edit", state: "submitted", id: "f", submitted_at: Date.now() } } });
     const submit = vi.fn(); await processJob(m.store, deps({ falPoll: async () => { throw new ProviderError("no media", 422, false, false, d422); }, falSubmit: submit as any }), "j");
     expect(m.row.status).toBe("failed"); expect(submit).not.toHaveBeenCalled();
+  });
+});
+
+describe("REGRESSION 50e227d5 (2): fal-ai/ffmpeg-api 403 on metadata → permitted renderer, completed assets reused", () => {
+  const fx = (n: string) => new Uint8Array(readFileSync(new URL(`../test/fixtures/${n}`, import.meta.url)));
+  const ok = (models: string[]) => Promise.resolve(models.map((model) => ({ model, ok: true, status: 422, reason: "доступен" })));
+  function midJob(extra: any = {}) {
+    return { stage: "shot_check_submit", next_attempt_at: new Date(0).toISOString(), plan: { budget_usd: STORY_BUDGET_USD, spend_usd: 0.715, story: normalizePlan(good()), cur: 0, retry: 0,
+      voices: [1, 2, 3, 4].map(() => ({ url: "v", duration: 2 })), frames: [0, 1, 2, 3].map((i) => ({ url: `https://v3b.fal.media/f${i}.png` })), shots: [], shot_candidate: "https://v3b.fal.media/shot0.mp4",
+      provider_tasks: { voice0_s100: { state: "done", id: "v0" }, frame0_r0: { state: "done", id: "f0" }, shot0_r0: { provider: "fal", model: FAL.i2v, state: "done", id: "kling0" },
+        shotmeta0_r0: { provider: "fal", model: FAL.metadata, state: "submitted", id: "denied-meta" } }, ...extra } } as any;
+  }
+  it("classifies an endpoint 403 as forbidden (named endpoint), never as an invalid key; 401 stays auth", async () => {
+    const { classifyProviderError: c, humanProviderError: h } = await import("@/lib/providers/http");
+    const d = c(403, JSON.stringify({ detail: "Access denied: You do not have permission to use this endpoint" }));
+    expect(d.kind).toBe("forbidden");
+    const msg = h("fal.ai fal-ai/ffmpeg-api/metadata", d);
+    expect(msg).toContain("fal-ai/ffmpeg-api/metadata"); expect(msg).not.toMatch(/Проверьте ключ/);
+    expect(c(403, JSON.stringify({ detail: "Endpoint x is not available: no billing definition.", type: "endpoint_not_priced" })).kind).toBe("forbidden");
+    expect(c(401, JSON.stringify({ detail: "Invalid key" })).kind).toBe("auth");
+  });
+  it("capability probe maps 422→usable, 403→denied, 401→bad key, network→unknown", () => {
+    expect(readCapability("m", 422, "").ok).toBe(true);
+    expect(readCapability("m", 403, "Access denied").ok).toBe(false);
+    expect(readCapability("m", 401, "").reason).toMatch(/401/);
+    expect(readCapability("m", 0, "").ok).toBeNull();
+  });
+  it("resumes at the end-frame check with extract-nth-frame; voice/frames/Kling shot are not resubmitted", async () => {
+    const m = mem(midJob());
+    const submit = vi.fn(async () => "frames-req"), shot = fx("shot-5s-a.mp4");
+    const d = deps({ falSubmit: submit as any, falCapabilities: ok, falPoll: async () => ({ state: "done", result: { images: [{ url: "https://v3b.fal.media/a.png" }, { url: "https://v3b.fal.media/last.png" }], frame_count: 2 } }) as any,
+      fetchMedia: async () => shot, ai: async () => ({ checks: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({ i, pass: true })) }) });
+    await processJob(m.store, d, "j");
+    expect(submit).toHaveBeenCalledTimes(1); expect((submit.mock.calls[0] as any)[0]).toBe(FAL.frames);
+    expect(m.row.stage).toBe("shot_check_wait");
+    m.row.next_attempt_at = new Date(0).toISOString(); await processJob(m.store, d, "j");
+    const p = m.row.plan as any;
+    expect(m.row.status).toBe("running"); expect(m.row.stage).toBe("shot_submit"); expect(p.cur).toBe(1);
+    expect(p.shots[0]).toMatchObject({ url: "https://v3b.fal.media/shot0.mp4", end_frame: "https://v3b.fal.media/last.png" }); expect(p.shots[0].duration).toBeCloseTo(5, 0);
+    expect(p.provider_tasks.shot0_r0.id).toBe("kling0"); expect(p.provider_tasks.frame0_r0.id).toBe("f0");
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+  it("preflight blocks before a paid call when a downstream renderer endpoint is denied", async () => {
+    const m = mem(midJob()); m.row.stage = "shot_submit"; (m.row.plan as any).cur = 1;
+    const submit = vi.fn(async () => "x");
+    const caps = async (models: string[]) => models.map((model) => ({ model, ok: model !== FAL.captions, status: model === FAL.captions ? 403 : 422, reason: model === FAL.captions ? "нет доступа к эндпоинту для этого аккаунта fal (403)" : "доступен" }));
+    await processJob(m.store, deps({ falSubmit: submit as any, falCapabilities: caps }), "j");
+    expect(submit).not.toHaveBeenCalled(); expect(m.row.status).toBe("blocked");
+    expect(m.row.error).toContain(FAL.captions); expect((m.row.plan as any).spend_usd).toBe(0.715);
+  });
+  it("remux joins scaled shots + narrator WAV in-Worker into a playable MOV for scale-video", async () => {
+    const tone = new Float32Array(24000 * 20).map((_, i) => 0.3 * Math.sin(i / 5));
+    const m = mem({ ...midJob(), stage: "remux" }, encodeWav16(tone, 24000));
+    Object.assign(m.row.plan as any, { mix_path: "u/j/mix_r0.wav", shots: [0, 1, 2, 3].map((i) => ({ url: `s${i}`, scaled_url: `https://v3b.fal.media/sc${i}.mp4` })) });
+    const clips = [fx("shot-5s-a.mp4"), fx("shot-5s-b.mp4")]; let k = 0;
+    await processJob(m.store, deps({ falCapabilities: ok, fetchMedia: async () => clips[k++ % 2]! }), "j");
+    expect(m.row.stage).toBe("scale_submit"); expect(m.uploads[0]).toMatch(/assembled_r\d+\.mov$/);
+    expect((m.row.plan as any).composed_url).toContain("assembled_");
+  });
+  it("muxer output: one H.264 track with all samples + PCM narration, duration = sum of clips", () => {
+    const a = fx("shot-5s-a.mp4"), b = fx("shot-5s-b.mp4");
+    const out = muxClipsWithPcm([a, b], { samples: new Float32Array(24000 * 10), rate: 24000 });
+    const info = inspectMp4(out); const t = readVideoTrack(out);
+    expect(info.video?.codec).toMatch(/^avc1$/); expect(info.audio?.codec).toBe("sowt");
+    expect(t.samples.length).toBe(readVideoTrack(a).samples.length + readVideoTrack(b).samples.length);
+    expect(info.durationS).toBeCloseTo(10, 0);
   });
 });
 
