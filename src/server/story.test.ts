@@ -148,7 +148,6 @@ describe("story state machine (fixtures)", () => {
     const submit = vi.fn(); await processJob(m.store, deps({ falPoll: async () => { throw new ProviderError("no media", 422, false, false, d422); }, falSubmit: submit as any }), "j");
     expect(m.row.status).toBe("failed"); expect(submit).not.toHaveBeenCalled();
   });
-});
 
 describe("REGRESSION 50e227d5 (2): fal-ai/ffmpeg-api 403 on metadata → permitted renderer, completed assets reused", () => {
   const fx = (n: string) => new Uint8Array(readFileSync(`src/test/fixtures/${n}`));
@@ -214,6 +213,7 @@ describe("REGRESSION 50e227d5 (2): fal-ai/ffmpeg-api 403 on metadata → permitt
     expect(t.samples.length).toBe(readVideoTrack(a).samples.length + readVideoTrack(b).samples.length);
     expect(info.durationS).toBeCloseTo(10, 0);
   });
+});
 });
 
 describe("provider error classification", () => {

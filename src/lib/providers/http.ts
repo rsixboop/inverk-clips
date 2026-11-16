@@ -17,8 +17,8 @@ export function classifyProviderError(status: number, text: string): ProviderDet
   const all = `${types.join(" ")} ${messages.join(" ")}`;
   const kind: ProviderErrorKind =
     types.includes("no_media_generated") ? "no_media"
+    : status === 403 && /permission|access denied|not_priced|not available/i.test(all) ? "forbidden"
     : status === 402 || (status === 403 && /balance|credit|locked|exhausted|billing/i.test(all)) ? "credits"
-    : status === 403 && /permission|access denied|not_priced|not available|forbidden/i.test(all) ? "forbidden"
     : status === 401 || status === 403 ? "auth"
     : status === 429 ? "rate_limit"
     : status === 422 || status === 400 ? "validation"
