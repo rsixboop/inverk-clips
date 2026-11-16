@@ -33,6 +33,8 @@ function memStore(job: Partial<Job>, sources: Src[] = []) {
     async signFootage(u, p) { if (!p.startsWith(u + "/")) throw new Error("foreign"); return "https://signed.example/" + p; },
     async uploadOutput(p) { uploads.add(p); },
     async removeOutput(p) { uploads.delete(p); },
+    async uploadAsset(p) { uploads.add(p); },
+    async signAsset(p) { return "https://signed.example/" + p; },
   };
   // simulates jobAction("cancel"): status change + lease token cleared
   const cancel = () => { row.status = "cancelled"; row.lease_token = null; row.lock_until = null; };
@@ -43,7 +45,7 @@ function deps(over: Partial<Deps>, now: () => number): Deps {
   const no = () => { throw new Error("not expected"); };
   return { ai: no as any, tavilyConfigured: () => true, tavilySearch: no as any, falConfigured: () => true, atlasConfigured: () => true,
     falSubmit: no as any, falPoll: no as any, atlasSubmit: no as any, atlasPoll: no as any,
-    inspectDirectVideo: no as any, fetchOutput: no as any, signJob: async () => "sig", now, ...over };
+    inspectDirectVideo: no as any, fetchOutput: no as any, fetchMedia: no as any, signJob: async () => "sig", now, ...over };
 
 }
 const src = (id: string, user = UID): Src => ({ id, user_id: user, kind: "upload", storage_path: `${user}/a.mp4`, title: "clip", permission: "owned", duration_s: 10 } as any);
