@@ -16,6 +16,7 @@ import { Route as NewsRouteImport } from './routes/news'
 import { Route as QueueRouteImport } from './routes/queue'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SourcesRouteImport } from './routes/sources'
+import { Route as ApiRockstarMediaIdRouteImport } from './routes/api/rockstar-media/$id'
 import { Route as ApiPublicJobsTickRouteImport } from './routes/api/public/jobs/tick'
 
 const IndexRoute = IndexRouteImport.update({
@@ -53,6 +54,11 @@ const SourcesRoute = SourcesRouteImport.update({
   path: '/sources',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRockstarMediaIdRoute = ApiRockstarMediaIdRouteImport.update({
+  id: '/api/rockstar-media/$id',
+  path: '/api/rockstar-media/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicJobsTickRoute = ApiPublicJobsTickRouteImport.update({
   id: '/api/public/jobs/tick',
   path: '/api/public/jobs/tick',
@@ -67,6 +73,7 @@ export interface FileRoutesByFullPath {
   '/queue': typeof QueueRoute
   '/settings': typeof SettingsRoute
   '/sources': typeof SourcesRoute
+  '/api/rockstar-media/$id': typeof ApiRockstarMediaIdRoute
   '/api/public/jobs/tick': typeof ApiPublicJobsTickRoute
 }
 export interface FileRoutesByTo {
@@ -77,6 +84,7 @@ export interface FileRoutesByTo {
   '/queue': typeof QueueRoute
   '/settings': typeof SettingsRoute
   '/sources': typeof SourcesRoute
+  '/api/rockstar-media/$id': typeof ApiRockstarMediaIdRoute
   '/api/public/jobs/tick': typeof ApiPublicJobsTickRoute
 }
 export interface FileRoutesById {
@@ -88,6 +96,7 @@ export interface FileRoutesById {
   '/queue': typeof QueueRoute
   '/settings': typeof SettingsRoute
   '/sources': typeof SourcesRoute
+  '/api/rockstar-media/$id': typeof ApiRockstarMediaIdRoute
   '/api/public/jobs/tick': typeof ApiPublicJobsTickRoute
 }
 export interface FileRouteTypes {
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
     | '/queue'
     | '/settings'
     | '/sources'
+    | '/api/rockstar-media/$id'
     | '/api/public/jobs/tick'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/queue'
     | '/settings'
     | '/sources'
+    | '/api/rockstar-media/$id'
     | '/api/public/jobs/tick'
   id:
     | '__root__'
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '/queue'
     | '/settings'
     | '/sources'
+    | '/api/rockstar-media/$id'
     | '/api/public/jobs/tick'
   fileRoutesById: FileRoutesById
 }
@@ -131,6 +143,7 @@ export interface RootRouteChildren {
   QueueRoute: typeof QueueRoute
   SettingsRoute: typeof SettingsRoute
   SourcesRoute: typeof SourcesRoute
+  ApiRockstarMediaIdRoute: typeof ApiRockstarMediaIdRoute
   ApiPublicJobsTickRoute: typeof ApiPublicJobsTickRoute
 }
 
@@ -185,6 +198,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SourcesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/rockstar-media/$id': {
+      id: '/api/rockstar-media/$id'
+      path: '/api/rockstar-media/$id'
+      fullPath: '/api/rockstar-media/$id'
+      preLoaderRoute: typeof ApiRockstarMediaIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/jobs/tick': {
       id: '/api/public/jobs/tick'
       path: '/api/public/jobs/tick'
@@ -203,6 +223,7 @@ const rootRouteChildren: RootRouteChildren = {
   QueueRoute: QueueRoute,
   SettingsRoute: SettingsRoute,
   SourcesRoute: SourcesRoute,
+  ApiRockstarMediaIdRoute: ApiRockstarMediaIdRoute,
   ApiPublicJobsTickRoute: ApiPublicJobsTickRoute,
 }
 export const routeTree = rootRouteImport
