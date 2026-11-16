@@ -37,7 +37,7 @@ export const MODES = [{ key: "niche", label: "По нише" }, { key: "link", l
 export const LANGS = [{ key: "en", label: "English" }, { key: "ru", label: "Русский" }, { key: "uk", label: "Українська" }] as const;
 export const PERMISSIONS = [{ key: "owned", label: "Моё видео" }, { key: "licensed", label: "Лицензия" }, { key: "permitted", label: "Есть разрешение" }, { key: "unknown", label: "Не указано" }] as const;
 export const STORY_STAGES = [STAGES[0],
-  { key: "story_plan", label: "Сюжет: кандидаты, выбор, проверка плана" },
+  { key: "story_plan", label: "Сюжет: кандидаты, выбор, проверка плана (держите вкладку открытой ~1–3 мин)" },
   { key: "voice_submit", label: "Диктор: fal Kokoro" }, { key: "voice_wait", label: "Замер длительности голоса" }, { key: "voice_align", label: "Привязка сцен к голосу" },
   { key: "frame_submit", label: "Опорные кадры: fal Nano Banana" }, { key: "frame_wait", label: "Проверка кадров (непрерывность)" },
   { key: "shot_submit", label: "Анимация: fal Kling 2.5 Pro" }, { key: "shot_wait", label: "Ожидание анимации" },
