@@ -115,4 +115,46 @@ describe("story state machine (fixtures)", () => {
     await processJob(m.store, d, "j");
     expect(m.row.status).toBe("failed"); expect(m.row.error).toMatch(/пустая/);
   });
+  it("REGRESSION 50e227d5: fal 422 no_media_generated on a frame result → one compact retry under a new key, earlier assets reused", async () => {
+    const { ProviderError, classifyProviderError, humanProviderError } = await import("@/lib/providers/http");
+    const d422 = classifyProviderError(422, JSON.stringify({ detail: [{ loc: ["body"], msg: "The model did not generate the expected output", type: "no_media_generated", input: { prompt: "secret-ish long prompt" } }] }));
+    const m = mem({ stage: "frame_wait" }); await processJob(m.store, deps({ ai: async () => good() }), "j");
+    Object.assign(m.row, { stage: "frame_wait", next_attempt_at: new Date(0).toISOString() });
+    Object.assign(m.row.plan as any, { cur: 1, retry: 0, spend_usd: 0.16, voices: [{ url: "v" }], frames: [{ url: "https://v3b.fal.media/f0.png" }],
+      provider_tasks: { voice0_s100: { state: "done", id: "v0" }, frame0_r0: { state: "done", id: "f0" }, frame1_r0: { provider: "fal", model: "fal-ai/nano-banana/edit", state: "submitted", id: "f1", submitted_at: Date.now() } } });
+    const submit = vi.fn(async () => "f1-retry");
+    const d = deps({ falPoll: async () => { throw new ProviderError(humanProviderError("fal.ai", d422), 422, false, false, d422); }, falSubmit: submit });
+    await processJob(m.store, d, "j");
+    const p = m.row.plan as any;
+    expect(m.row.status).toBe("running"); expect(m.row.stage).toBe("frame_submit"); expect(p.retry).toBe(1); expect(p.compact_prompt).toBe(true);
+    expect(p.provider_tasks.frame1_r0.state).toBe("failed"); expect(p.provider_errors.at(-1)).toMatchObject({ kind: "no_media", status: 422, types: ["no_media_generated"], fields: ["body"] });
+    expect(JSON.stringify(p.provider_errors)).not.toContain("secret-ish");
+    m.row.next_attempt_at = new Date(0).toISOString(); await processJob(m.store, d, "j");
+    expect(submit).toHaveBeenCalledTimes(1); expect((submit.mock.calls[0] as any)[0]).toBe("fal-ai/nano-banana/edit");
+    expect(((submit.mock.calls[0] as any)[1]).prompt.length).toBeLessThan(400);
+    expect(m.row.stage).toBe("frame_wait"); expect((m.row.plan as any).provider_tasks.frame1_r1.id).toBe("f1-retry");
+    expect((m.row.plan as any).provider_tasks.frame0_r0.id).toBe("f0");
+  });
+  it("a second no_media for the same frame fails visibly without a third paid call", async () => {
+    const { ProviderError, classifyProviderError } = await import("@/lib/providers/http");
+    const d422 = classifyProviderError(422, JSON.stringify({ detail: [{ type: "no_media_generated", msg: "x" }] }));
+    const m = mem({ stage: "frame_wait" }); await processJob(m.store, deps({ ai: async () => good() }), "j");
+    Object.assign(m.row, { stage: "frame_wait", next_attempt_at: new Date(0).toISOString() });
+    Object.assign(m.row.plan as any, { cur: 1, retry: 1, frames: [{ url: "u" }], provider_tasks: { frame1_r1: { provider: "fal", model: "fal-ai/nano-banana/edit", state: "submitted", id: "f", submitted_at: Date.now() } } });
+    const submit = vi.fn(); await processJob(m.store, deps({ falPoll: async () => { throw new ProviderError("no media", 422, false, false, d422); }, falSubmit: submit as any }), "j");
+    expect(m.row.status).toBe("failed"); expect(submit).not.toHaveBeenCalled();
+  });
+});
+
+describe("provider error classification", () => {
+  it("distinguishes validation, no-output, auth, credits and rate limits; never echoes inputs or keys", async () => {
+    const { classifyProviderError: c, humanProviderError: h } = await import("@/lib/providers/http");
+    expect(c(422, JSON.stringify({ detail: [{ type: "no_media_generated", msg: "m", loc: ["body"] }] })).kind).toBe("no_media");
+    const v = c(422, JSON.stringify({ detail: [{ type: "value_error", msg: "bad url", loc: ["body", "image_urls", 0] }] }));
+    expect(v).toMatchObject({ kind: "validation", fields: ["body.image_urls.0"] }); expect(h("fal.ai", v)).toMatch(/параметры/);
+    expect(c(401, "Unauthorized").kind).toBe("auth"); expect(c(403, "User is locked. Reason: Exhausted balance").kind).toBe("credits");
+    expect(c(429, "").kind).toBe("rate_limit"); expect(c(503, "").kind).toBe("server");
+    expect(h("fal.ai", c(422, JSON.stringify({ detail: [{ type: "no_media_generated" }] })))).not.toMatch(/баланс сервиса/);
+    expect(c(400, "Key abc.def leaked").messages[0]).not.toContain("abc.def");
+  });
 });
