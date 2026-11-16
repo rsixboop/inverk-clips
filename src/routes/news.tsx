@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { pollNewsVoice, submitNewsVoice } from "@/lib/news-voice.functions";
 import { AppShell } from "@/components/studio/AppShell";
-import { CATALOG, findAsset, pickAssets } from "@/lib/news-catalog";
+import { CATALOG, CLIPS, findAsset, findClip, pickAssets } from "@/lib/news-catalog";
 import { findGtaNews, findNewswire, scriptFromArticle } from "@/lib/news-script.functions";
 import { MEDIA_LIBRARY, NEWS_SOURCE, PILOT, pilotValid, totalSeconds, type Shot } from "@/lib/news-pilot";
 
@@ -81,11 +81,17 @@ function News() {
   const setState = (url: string, state: "ok" | "error", err?: string) => setMedia((ms) => ms.map((x) => (x && x.url === url && x.state === "loading" ? { ...x, state, err } : x)));
   useEffect(() => { media.forEach((m) => { if (!m || m.state !== "loading") return;
     if (m.url.startsWith("blob:")) { setState(m.url, "ok"); return; }
+    if (m.video) { const src = m.url; fetch(src).then(async (r) => { if (!r.ok) throw new Error(await r.text());
+        const b = await r.blob(); const u = URL.createObjectURL(b); const v = document.createElement("video"); v.muted = true;
+        v.onloadeddata = () => setMedia((ms) => ms.map((x) => (x && x.url === src ? { ...x, url: u, state: "ok" } : x)));
+        v.onerror = () => setState(src, "error", "видео не декодируется"); v.src = u; })
+      .catch((e) => setState(src, "error", e instanceof Error && e.message ? e.message : "сеть")); return; }
     fetch(m.url).then(async (r) => { if (!r.ok) setState(m.url, "error", await r.text()); else { const i = new Image(); i.onload = () => setState(m.url, "ok"); i.onerror = () => setState(m.url, "error", "не декодируется"); i.src = m.url; } })
       .catch(() => setState(m.url, "error", "сеть")); }); }, [media]);
   const autoPick = () => setMedia((m) => pickAssets(shots).map((id, k) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : m[k] ?? null; }));
   const pickCatalog = (i: number, id: string) => { const a = findAsset(id); if (a) setMedia((m) => m.map((x, k) => (k === i ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : x))); };
 
+  const pickClip = (i: number, id: string) => { const c = findClip(id); if (c) setMedia((m) => m.map((x, k) => (k === i ? { url: `/api/rockstar-media/${c.id}`, video: true, name: `Rockstar видео: ${c.title}`, state: "loading" } : x))); };
   function draw(i: number, progress = 0) {
     const ctx = canvas.current!.getContext("2d")!, el = els.current[i];
     ctx.fillStyle = "#111"; ctx.fillRect(0, 0, W, H);
@@ -168,6 +174,8 @@ function News() {
             <input type="file" accept="video/mp4,image/*" className="text-xs" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return;
               setMedia((m) => m.map((x, k) => (k === i ? { url: URL.createObjectURL(f), video: f.type.startsWith("video"), name: f.name, state: "ok" } : x))); }} />
             <select className="h-7 rounded border border-input bg-muted text-xs" value="" onChange={(e) => pickCatalog(i, e.target.value)}><option value="">Скриншот Rockstar…</option>{CATALOG.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}</select>
+            <select className="h-7 rounded border border-input bg-muted text-xs" value="" onChange={(e) => pickClip(i, e.target.value)}><option value="">Видеофутаж Rockstar…</option>{CLIPS.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</select>
+            {media[i]?.state === "ok" && media[i]!.video && <video src={media[i]!.url} muted loop autoPlay playsInline className="h-24 rounded object-cover" />}
             {media[i]?.state === "ok" && !media[i]!.video && <img src={media[i]!.url} alt={media[i]!.name} className="h-24 rounded object-cover" />}
             {media[i] && <div className={`text-xs ${media[i]!.state === "error" ? "text-destructive" : "text-muted-foreground"}`}>{media[i]!.name} — {media[i]!.state === "ok" ? "загружено" : media[i]!.state === "loading" ? "загрузка…" : `ошибка: ${media[i]!.err}`}</div>}
           </div>
