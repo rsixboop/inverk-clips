@@ -98,7 +98,7 @@ export function muxClipsWithPcm(clips: Uint8Array[], pcm: { samples: Float32Arra
   for (let i = 0; i < pcm.samples.length; i++, p += 2) av.setInt16(p, Math.max(-32768, Math.min(32767, Math.round(pcm.samples[i]! * 32767))), true);
 
   const vDur = all.reduce((a, s) => a + s.dur, 0), mediaTime = tracks[0]!.mediaTime ? sc(tracks[0]!.mediaTime, tracks[0]!) : 0;
-  const movieV = Math.round(((vDur - mediaTime) * 1000) / ts), movieA = Math.round((pcm.samples.length * 1000) / pcm.rate);
+  const movieV = Math.round((vDur * 1000) / ts), movieA = Math.round((pcm.samples.length * 1000) / pcm.rate);
   const stts = runs(all.map((s) => s.dur)), ctts = runs(all.map((s) => s.cto)), hasCtts = all.some((s) => s.cto !== 0);
   const stscRows: Uint8Array[] = []; let prev = "";
   tracks.forEach((t, i) => { const key = `${t.samples.length}:${sdi[i]}`; if (key !== prev) stscRows.push(cat([u32(i + 1), u32(t.samples.length), u32(sdi[i]!)])); prev = key; });
