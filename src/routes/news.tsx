@@ -86,11 +86,11 @@ function News() {
   const autoPick = () => setMedia((m) => pickAssets(shots).map((id, k) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : m[k] ?? null; }));
   const pickCatalog = (i: number, id: string) => { const a = findAsset(id); if (a) setMedia((m) => m.map((x, k) => (k === i ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : x))); };
 
-  function draw(i: number) {
+  function draw(i: number, progress = 0) {
     const ctx = canvas.current!.getContext("2d")!, el = els.current[i];
     ctx.fillStyle = "#111"; ctx.fillRect(0, 0, W, H);
     if (el) { const sw = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth, sh = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
-      if (sw && sh) { const s = Math.max(W / sw, H / sh); ctx.drawImage(el, (W - sw * s) / 2, (H - sh * s) / 2, sw * s, sh * s); } }
+      if (sw && sh) { const s = Math.max(W / sw, H / sh) * (1.035 + 0.075 * progress); const dx = (W - sw * s) / 2 + (i % 2 ? 1 : -1) * (progress - 0.5) * 16; ctx.drawImage(el, dx, (H - sh * s) / 2, sw * s, sh * s); } }
     ctx.font = "bold 64px sans-serif"; ctx.textAlign = "center";
     const lines = wrap(ctx, shots[i]!.text, W - 160), y0 = H - 520;
     ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(60, y0 - 80, W - 120, lines.length * 80 + 60);
@@ -122,12 +122,12 @@ function News() {
       rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8e6 });
       rec.ondataavailable = (e) => chunks.push(e.data); rec.start();
     }
-    if (a) await a.el.play().catch(() => setStatus("Не удалось воспроизвести озвучку"));
+    if (a) { try { await a.el.play(); } catch { rec?.stop(); setStatus("Озвучка не воспроизводится — экспорт остановлен, чтобы не сохранить немой ролик."); return; } }
     for (let i = 0; i < shots.length; i++) {
       setStatus(`${record ? "Запись" : "Предпросмотр"}: шот ${i + 1}/4`);
       const el = els.current[i]; if (el instanceof HTMLVideoElement) { el.currentTime = 0; await el.play().catch(() => {}); }
-      const end = performance.now() + shots[i]!.seconds * 1000;
-      while (performance.now() < end) { draw(i); await new Promise((r) => requestAnimationFrame(r)); }
+      const begin = performance.now(), duration = shots[i]!.seconds * 1000, end = begin + duration;
+      while (performance.now() < end) { draw(i, Math.min(1, (performance.now() - begin) / duration)); await new Promise((r) => requestAnimationFrame(r)); }
       if (el instanceof HTMLVideoElement) el.pause();
     }
     if (a) a.el.pause();
@@ -139,7 +139,7 @@ function News() {
     } else setStatus("Предпросмотр завершён.");
   }
 
-  const upd = (i: number, p: Partial<Shot>) => setShots((s) => s.map((x, k) => (k === i ? { ...x, ...p } : x)));
+  const upd = (i: number, p: Partial<Shot>) => { setShots((s) => s.map((x, k) => (k === i ? { ...x, ...p } : x))); setApproved(false); setVoice(null); };
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
       <div className="panel p-4 space-y-3">
