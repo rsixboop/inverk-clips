@@ -69,6 +69,7 @@ function News() {
     if (m.url.startsWith("blob:")) { setState(m.url, "ok"); return; }
     fetch(m.url).then(async (r) => { if (!r.ok) setState(m.url, "error", await r.text()); else { const i = new Image(); i.onload = () => setState(m.url, "ok"); i.onerror = () => setState(m.url, "error", "не декодируется"); i.src = m.url; } })
       .catch(() => setState(m.url, "error", "сеть")); }); }, [media]);
+  const autoPick = () => setMedia((m) => pickAssets(shots).map((id, k) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : m[k] ?? null; }));
   const pickCatalog = (i: number, id: string) => { const a = findAsset(id); if (a) setMedia((m) => m.map((x, k) => (k === i ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : x))); };
 
   function draw(i: number) {
@@ -130,6 +131,7 @@ function News() {
       <div className="panel p-4 space-y-3">
         <h1 className="text-base font-bold">GTA VI: 30 FPS? — пилот</h1>
         <p className="text-xs text-muted-foreground">Тезисы только из <a className="text-primary underline" href={NEWS_SOURCE} target="_blank" rel="noreferrer">официальной статьи Rockstar</a>. Материалы скачайте сами из <a className="text-primary underline" href={MEDIA_LIBRARY} target="_blank" rel="noreferrer">медиатеки Rockstar</a> и загрузите ниже. Файлы остаются в вашем браузере.</p>
+        <button onClick={autoPick} className="h-7 rounded-md border border-border px-2 text-xs">Подобрать кадры автоматически</button>
         <p className="font-mono text-xs">Длительность: {totalSeconds(shots)} с {pilotValid(shots) ? "" : "— нужно 18–23 с"}</p>
         {shots.map((s, i) => (
           <div key={i} className="rounded-md border border-border p-3 space-y-2 text-sm">
@@ -140,6 +142,7 @@ function News() {
             <input type="file" accept="video/mp4,image/*" className="text-xs" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return;
               setMedia((m) => m.map((x, k) => (k === i ? { url: URL.createObjectURL(f), video: f.type.startsWith("video"), name: f.name, state: "ok" } : x))); }} />
             <select className="h-7 rounded border border-input bg-muted text-xs" value="" onChange={(e) => pickCatalog(i, e.target.value)}><option value="">Скриншот Rockstar…</option>{CATALOG.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}</select>
+            {media[i]?.state === "ok" && !media[i]!.video && <img src={media[i]!.url} alt={media[i]!.name} className="h-24 rounded object-cover" />}
             {media[i] && <div className={`text-xs ${media[i]!.state === "error" ? "text-destructive" : "text-muted-foreground"}`}>{media[i]!.name} — {media[i]!.state === "ok" ? "загружено" : media[i]!.state === "loading" ? "загрузка…" : `ошибка: ${media[i]!.err}`}</div>}
           </div>
         ))}
