@@ -159,7 +159,16 @@ export async function submitTask(c: Ctx, key: string, provider: "fal" | "atlas",
 }
 export async function pollTask(c: Ctx, key: string): Promise<Record<string, any> | null> {
   const tasks = P(c.job).provider_tasks ?? {}, task: Task | undefined = tasks[key];
-  if (!task?.id) throw new Error("Нет ID запроса провайдера; автоматическая повторная отправка запрещена");
+  if (!task) {
+    // Never submitted under this key (e.g. a retry resumed a wait stage whose task was renamed or left by an
+    // older worker): go back to the matching submit stage. Other tasks/assets are untouched.
+    if (!c.job.stage.endsWith("_wait")) throw new Error("Нет ID запроса провайдера; автоматическая повторная отправка запрещена");
+    const submit = c.job.stage.replace(/_wait$/, "_submit");
+    await patch(c, { stage: submit, submit_state: null, attempts: 0, next_attempt_at: new Date(c.deps.now()).toISOString() });
+    await log(c, c.job.stage, `Запрос «${key}» ещё не отправлялся — возврат к шагу отправки`, "warn");
+    return null;
+  }
+  if (!task.id) throw new ProviderError(task.state === "submitting" ? AMBIGUOUS_MSG(task.provider === "atlas" ? "Atlas Cloud" : "fal.ai") : "Нет ID запроса провайдера; автоматическая повторная отправка запрещена", 0, false, task.state === "submitting");
   if (task.state === "done" && task.result) return task.result;
   if (task.state === "failed") throw new ProviderError("Запрос провайдера уже завершился без результата; нужен новый запрос", 0, false, false, task.error as any);
   if (c.deps.now() - task.submitted_at > RENDER_TIMEOUT_MS) throw new Error("Таймаут операции провайдера (20 минут)");
