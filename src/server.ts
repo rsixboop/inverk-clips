@@ -50,6 +50,16 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      // Scheduled job tick: acknowledge at once, keep advancing jobs after the response (waitUntil ~30s).
+      const waitUntil = (ctx as { waitUntil?: (p: Promise<unknown>) => void } | null)?.waitUntil;
+      if (waitUntil && request.method === "POST" && new URL(request.url).pathname === "/api/public/jobs/tick") {
+        const { authenticateCronRequest } = await import("./integrations/supabase/cron-auth");
+        const denied = await authenticateCronRequest(request);
+        if (denied) return denied;
+        const { drainJobs } = await import("./server/drain.server");
+        waitUntil.call(ctx, drainJobs(25_000).catch((e) => console.error("drain failed", e)));
+        return Response.json({ accepted: true }, { status: 202 });
+      }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
