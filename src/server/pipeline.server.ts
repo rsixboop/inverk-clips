@@ -14,6 +14,8 @@ import { tavilySearch, tavilyConfigured, type ResearchHit } from "@/lib/provider
 import { inspectDirectVideo } from "@/lib/url-guard";
 import { fetchOutput } from "@/lib/output-fetch";
 import { assertTikTokReady, inspectMp4 } from "@/lib/mp4-inspect";
+import { storyStep, narrationCoverage } from "./story.server";
+import { estimateCost } from "./story-plan";
 
 export type Job = Database["public"]["Tables"]["jobs"]["Row"];
 export type Src = Database["public"]["Tables"]["sources"]["Row"];
@@ -31,6 +33,8 @@ export interface Store {
   signFootage(userId: string, path: string): Promise<string>;
   uploadOutput(path: string, bytes: Uint8Array): Promise<void>;
   removeOutput(path: string): Promise<void>;
+  uploadAsset(path: string, bytes: Uint8Array, mime: string): Promise<void>;
+  signAsset(path: string): Promise<string>;
 }
 export type Deps = {
   ai: (instructions: string, user: string, images?: string[]) => Promise<any>;
@@ -39,6 +43,7 @@ export type Deps = {
   atlasConfigured: () => boolean; atlasSubmit: typeof atlasSubmit; atlasPoll: typeof atlasPoll;
   inspectDirectVideo: typeof inspectDirectVideo;
   fetchOutput: (url: string, route: string) => Promise<Uint8Array>;
+  fetchMedia: (url: string) => Promise<Uint8Array>;
   signJob: (id: string) => Promise<string>;
   now: () => number;
 };
@@ -53,18 +58,18 @@ export const AMBIGUOUS_MSG = (p: string) => `Неизвестный исход �
 
 export class StaleLease extends Error { constructor() { super("stale lease"); } }
 
-type Ctx = { store: Store; deps: Deps; job: Job; token: string; opts: { callbackBase?: string | undefined } };
-async function patch(c: Ctx, p: Partial<Job>) {
+export type Ctx = { store: Store; deps: Deps; job: Job; token: string; opts: { callbackBase?: string | undefined } };
+export async function patch(c: Ctx, p: Partial<Job>) {
   if (!(await c.store.update(c.job, c.token, p))) throw new StaleLease();
   Object.assign(c.job, p);
 }
-const log = (c: Ctx, stage: string, m: string, level = "info", d?: number) => c.store.log(c.job, stage, m, level, d);
-async function fail(c: Ctx, stage: string, msg: string, status: "failed" | "blocked" = "failed") {
+export const log = (c: Ctx, stage: string, m: string, level = "info", d?: number) => c.store.log(c.job, stage, m, level, d);
+export async function fail(c: Ctx, stage: string, msg: string, status: "failed" | "blocked" = "failed") {
   await patch(c, { status, failed_stage: stage, error: msg, finished_at: status === "failed" ? new Date(c.deps.now()).toISOString() : null });
   await log(c, stage, msg, status === "blocked" ? "warn" : "error");
 }
-const P = (job: Job): any => job.plan ?? {};
-const setPlan = (c: Ctx, add: Record<string, unknown>, extra: Partial<Job> = {}) => patch(c, { plan: { ...P(c.job), ...add } as any, ...extra });
+export const P = (job: Job): any => job.plan ?? {};
+export const setPlan = (c: Ctx, add: Record<string, unknown>, extra: Partial<Job> = {}) => patch(c, { plan: { ...P(c.job), ...add } as any, ...extra });
 
 export async function processJob(store: Store, deps: Deps, jobId: string, opts: { callbackBase?: string | undefined } = {}) {
   const token = crypto.randomUUID();
@@ -107,13 +112,16 @@ async function mediaUrl(c: Ctx, s: Src): Promise<string> {
 }
 
 type Task = { provider: "fal" | "atlas"; model: string; state: "submitting" | "submitted" | "done"; id?: string; submitted_at: number; result?: Record<string, any> };
-async function submitTask(c: Ctx, key: string, provider: "fal" | "atlas", model: string, input: Record<string, unknown>, waitStage = `${key}_wait`) {
+export async function submitTask(c: Ctx, key: string, provider: "fal" | "atlas", model: string, input: Record<string, unknown>, waitStage = `${key}_wait`) {
   const tasks = P(c.job).provider_tasks ?? {}, previous: Task | undefined = tasks[key];
   if (previous?.id) { await patch(c, { stage: waitStage }); return; }
   if (previous?.state === "submitting") throw new ProviderError(AMBIGUOUS_MSG(provider), 0, false);
   if (!(provider === "fal" ? c.deps.falConfigured() : c.deps.atlasConfigured())) return fail(c, c.job.stage, `Не подключено: ${provider === "fal" ? "FAL_KEY" : "ATLAS_CLOUD_API_KEY"}`, "blocked");
+  // Per-job spend cap (story route): estimated cost is booked at the barrier, before the paid call.
+  const budget = P(c.job).budget_usd, spent = Number(P(c.job).spend_usd ?? 0), est = estimateCost(model);
+  if (typeof budget === "number" && spent + est > budget + 1e-9) return fail(c, c.job.stage, `Лимит расходов задачи: потрачено ~$${spent.toFixed(2)} из $${budget.toFixed(2)}, следующий шаг ~$${est.toFixed(2)}. Остановлено без новой оплаты.`, "blocked");
   const task: Task = { provider, model, state: "submitting", submitted_at: c.deps.now() };
-  await setPlan(c, { provider_tasks: { ...tasks, [key]: task } }, { submit_state: "submitting", render_attempt: c.job.render_attempt + 1 });
+  await setPlan(c, { provider_tasks: { ...tasks, [key]: task }, ...(typeof budget === "number" ? { spend_usd: Math.round((spent + est) * 1000) / 1000, spend_log: [...(P(c.job).spend_log ?? []), { key, model, usd: est }] } : {}) }, { submit_state: "submitting", render_attempt: c.job.render_attempt + 1 });
   let id: string;
   try { id = await (provider === "fal" ? c.deps.falSubmit(model, input) : c.deps.atlasSubmit(model, input)); }
   catch (e) {
@@ -125,7 +133,7 @@ async function submitTask(c: Ctx, key: string, provider: "fal" | "atlas", model:
   catch (e) { if (e instanceof StaleLease) await c.store.recordOrphan(c.job.id, "provider_project_id", `${provider}:${model}:${id}`); throw e; }
   await log(c, c.job.stage, `${provider === "fal" ? "fal.ai" : "Atlas Cloud"}: запрос принят (${key})`);
 }
-async function pollTask(c: Ctx, key: string): Promise<Record<string, any> | null> {
+export async function pollTask(c: Ctx, key: string): Promise<Record<string, any> | null> {
   const tasks = P(c.job).provider_tasks ?? {}, task: Task | undefined = tasks[key];
   if (!task?.id) throw new Error("Нет ID запроса провайдера; автоматическая повторная отправка запрещена");
   if (task.state === "done" && task.result) return task.result;
@@ -140,6 +148,10 @@ async function step(c: Ctx) {
   const { job, deps } = c;
   const t = deps.now();
   const plan = P(job);
+  if (job.route === "story") {
+    if (job.stage === "validate") { await patch(c, { stage: "story_plan", attempts: 0 }); return log(c, "validate", "Сюжетный режим: ИИ-анимация с диктором, без внешнего футажа"); }
+    if (await storyStep(c)) return;
+  }
   switch (job.stage) {
     case "validate": {
       const src = await source(c, job.source_id);
@@ -277,7 +289,8 @@ Return {title, script, caption (<=150 chars), hashtags[3-6], claims:[{claim, ref
       const duration = Number(plan.speech_duration ?? (plan.trimmed ?? []).reduce((n: number, s: any) => n + s.duration, 0));
       if (!duration || duration > 120) throw new Error("Недопустимая длина сборки");
       const keys: { url: string; timestamp: number; duration: number }[] = [];
-      if (plan.image_url) keys.push({ url: plan.image_url, timestamp: 0, duration: duration * 1000 });
+      if (plan.story) (plan.shots as any[]).forEach((sh, i) => keys.push({ url: sh.url, timestamp: i * 5000, duration: 5000 }));
+      else if (plan.image_url) keys.push({ url: plan.image_url, timestamp: 0, duration: duration * 1000 });
       else {
         const clips = plan.trimmed ?? []; if (!clips.length) throw new Error("Нет футажа");
         let t = 0, n = 0;
@@ -289,7 +302,7 @@ Return {title, script, caption (<=150 chars), hashtags[3-6], claims:[{claim, ref
         }
         if (t < duration) throw new Error("Недостаточно футажа для озвучки");
       }
-      const tracks: any[] = [{ id: "visual", type: plan.image_url ? "image" : "video", keyframes: keys }];
+      const tracks: any[] = [{ id: "visual", type: plan.image_url && !plan.story ? "image" : "video", keyframes: keys }];
       if (plan.audio_url) tracks.push({ id: "narration", type: "audio", keyframes: [{ url: plan.audio_url, timestamp: 0, duration: duration * 1000 }] });
       await submitTask(c, "compose", "fal", FAL.compose, { tracks }); return;
     }
@@ -306,6 +319,11 @@ Return {title, script, caption (<=150 chars), hashtags[3-6], claims:[{claim, ref
     case "captions_wait": {
       const r = await pollTask(c, "captions"); if (!r) return;
       if (!(Number(r["subtitle_count"]) > 0)) throw new Error("Провайдер не создал субтитры");
+      if (job.route === "story") {
+        const coverage = narrationCoverage(job.script ?? "", String(r["transcription"] ?? ""));
+        await setPlan(c, { narration_check: { coverage, heard: String(r["transcription"] ?? "").slice(0, 600) } });
+        if (coverage < 0.6) return fail(c, job.stage, `Диктор не распознан в итоговом видео (совпало ${(coverage * 100).toFixed(0)}% слов) — результат не принят`);
+      }
       await setPlan(c, { render_url: providerMedia(r["video"]?.url), subtitle_count: r["subtitle_count"] }, { stage: "finalize" }); return;
     }
     case "finalize": {
@@ -343,7 +361,7 @@ export async function signJob(jobId: string) {
 
 export const realDeps = (): Deps => ({
   ai, tavilyConfigured, tavilySearch, falConfigured, falSubmit, falPoll, atlasConfigured, atlasSubmit, atlasPoll,
-  inspectDirectVideo, fetchOutput: (u, r) => fetchOutput(u, r), signJob, now: () => Date.now(),
+  inspectDirectVideo, fetchOutput: (u, r) => fetchOutput(u, r), fetchMedia: (u) => fetchOutput(u, "media", { maxBytes: 30 * 1024 * 1024 }), signJob, now: () => Date.now(),
 });
 
 /** Entry point for server code: admin client, one bounded stage. */

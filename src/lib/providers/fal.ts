@@ -6,6 +6,8 @@ export const FAL = {
   whisper: "fal-ai/whisper", metadata: "fal-ai/ffmpeg-api/metadata", compose: "fal-ai/ffmpeg-api/compose",
   trim: "fal-ai/workflow-utilities/trim-video", scale: "fal-ai/workflow-utilities/scale-video",
   frames: "fal-ai/workflow-utilities/extract-nth-frame", captions: "fal-ai/workflow-utilities/auto-subtitle",
+  tts: "fal-ai/kokoro/american-english", image: "fal-ai/nano-banana", imageEdit: "fal-ai/nano-banana/edit",
+  i2v: "fal-ai/kling-video/v2.5-turbo/pro/image-to-video", sfx: "fal-ai/mmaudio-v2/text-to-audio",
 } as const;
 export const falConfigured = () => Boolean(process.env["FAL_KEY"]);
 function headers() {
