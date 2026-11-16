@@ -108,7 +108,6 @@ export function validatePlan(p: StoryPlan, opts: { allowNeon?: boolean; prompt?:
     } else if (!s.reveals_payoff) issues.push("Final scene must deliver the payoff.");
     if (!opts.allowNeon && /\bneon|pixar|toy|diorama|golden hour\b/i.test(`${s.where} ${s.camera} ${s.props}`)) issues.push(`Scene ${n}: style conflicts with calibration (no neon/toy/golden-hour gloss).`);
   });
-  const sel = p.candidates?.find((x) => x.id === p.selected_id);
   if (!REJECTED_CONCEPTS.test(opts.prompt ?? "") && REJECTED_CONCEPTS.test(`${sel?.synopsis ?? ""} ${p.title} ${p.scenes.map((s) => `${s.action} ${s.props} ${s.narration}`).join(" ")}`)) issues.push("Story uses a rejected generic concept (pigeons/fries/shopping cart); pick a different GTA-style story.");
   if (!p.payoff_terms.length) issues.push("payoff_terms must list words that would reveal the payoff.");
   return [...new Set(issues)];
