@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { pollNewsVoice, submitNewsVoice } from "@/lib/news-voice.functions";
 import { AppShell } from "@/components/studio/AppShell";
 import { CATALOG, findAsset, pickAssets } from "@/lib/news-catalog";
+import { findNewswire, scriptFromArticle } from "@/lib/news-script.functions";
 import { MEDIA_LIBRARY, NEWS_SOURCE, PILOT, pilotValid, totalSeconds, type Shot } from "@/lib/news-pilot";
 
 export const Route = createFileRoute("/news")({
@@ -27,6 +28,16 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, max: number) {
 function News() {
   const [shots, setShots] = useState<Shot[]>(PILOT);
   const [media, setMedia] = useState<Media[]>(() => pickAssets(PILOT).map((id) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
+  const [source, setSource] = useState(NEWS_SOURCE);
+  const [found, setFound] = useState<{ title: string; url: string; date: string }[]>([]);
+  const [nw, setNw] = useState({ busy: false, msg: "" });
+  const [approved, setApproved] = useState(true);
+  const findFn = useServerFn(findNewswire), scriptFn = useServerFn(scriptFromArticle);
+  const search = async () => { setNw({ busy: true, msg: "Ищу на Rockstar Newswire…" }); try { const r = await findFn(); setFound(r.items); setNw({ busy: false, msg: r.error }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
+  const makeScript = async () => { setNw({ busy: true, msg: "Читаю статью и пишу сценарий…" }); try { const r = await scriptFn({ data: { url: source } });
+    const ns = r.shots.map((x) => ({ text: x.text, seconds: x.seconds, material: `Факт: «${x.fact}»` })); setShots(ns); setApproved(false); setVoice(null);
+    setMedia((m) => pickAssets(ns).map((id, k) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : m[k] ?? null; }));
+    setNw({ busy: false, msg: "Сценарий готов. Проверьте и утвердите перед озвучкой." }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
   const [allowed, setAllowed] = useState(false);
   const [status, setStatus] = useState("");
   const [out, setOut] = useState<{ url: string; ext: string } | null>(null);
@@ -59,7 +70,7 @@ function News() {
       setTts({ busy: false, msg: `fal ещё не ответил (запрос ${id}). Нажмите снова — будет только проверка, без новой оплаты.` });
     } catch (e) { setTts({ busy: false, msg: `Ошибка${id && id !== "pending" ? ` (запрос ${id})` : ""}: ${e instanceof Error ? e.message : String(e)}` }); }
   }
-  const ready = allowed && media.every((m) => m?.state === "ok") && pilotValid(shots);
+  const ready = approved && allowed && media.every((m) => m?.state === "ok") && pilotValid(shots);
 
   useEffect(() => { els.current = media.map((m) => { if (!m) return null;
     if (m.video) { const v = document.createElement("video"); v.src = m.url; v.muted = true; v.playsInline = true; return v; }
@@ -130,7 +141,15 @@ function News() {
     <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
       <div className="panel p-4 space-y-3">
         <h1 className="text-base font-bold">GTA VI: 30 FPS? — пилот</h1>
-        <p className="text-xs text-muted-foreground">Тезисы только из <a className="text-primary underline" href={NEWS_SOURCE} target="_blank" rel="noreferrer">официальной статьи Rockstar</a>. Материалы скачайте сами из <a className="text-primary underline" href={MEDIA_LIBRARY} target="_blank" rel="noreferrer">медиатеки Rockstar</a> и загрузите ниже. Файлы остаются в вашем браузере.</p>
+        <p className="text-xs text-muted-foreground">Тезисы только из <a className="text-primary underline" href={source} target="_blank" rel="noreferrer">официальной статьи Rockstar</a>. Материалы скачайте сами из <a className="text-primary underline" href={MEDIA_LIBRARY} target="_blank" rel="noreferrer">медиатеки Rockstar</a> и загрузите ниже. Файлы остаются в вашем браузере.</p>
+        <div className="rounded-md border border-border p-2 space-y-2 text-xs">
+          <button disabled={nw.busy} onClick={search} className="h-7 rounded-md border border-border px-2">Найти новости GTA VI</button>
+          {found.map((f) => <label key={f.url} className="flex gap-2"><input type="radio" checked={source === f.url} onChange={() => setSource(f.url)} />{f.title} {f.date && <span className="text-muted-foreground">{f.date}</span>}</label>)}
+          <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="https://www.rockstargames.com/newswire/article/…" className="h-7 w-full rounded border border-input bg-muted px-2" />
+          <button disabled={nw.busy} onClick={makeScript} className="h-7 rounded-md bg-primary px-2 text-primary-foreground">Сценарий</button>
+          {nw.msg && <p className="text-muted-foreground">{nw.msg}</p>}
+          {!approved && <button onClick={() => setApproved(true)} className="h-7 rounded-md border border-primary px-2 text-primary">Утвердить сценарий</button>}
+        </div>
         <button onClick={autoPick} className="h-7 rounded-md border border-border px-2 text-xs">Подобрать кадры автоматически</button>
         <p className="font-mono text-xs">Длительность: {totalSeconds(shots)} с {pilotValid(shots) ? "" : "— нужно 18–23 с"}</p>
         {shots.map((s, i) => (
@@ -149,7 +168,7 @@ function News() {
         <label className="flex gap-2 text-xs"><input type="checkbox" checked={allowed} onChange={(e) => setAllowed(e.target.checked)} />Я подтверждаю, что имею право использовать загруженные материалы (свои файлы или разрешённые официальные медиа Rockstar).</label>
         <div className="space-y-1 text-xs"><b>Озвучка (MP3/WAV)</b> — запишите текст шотов выше по-английски и загрузите файл:
           <input type="file" accept="audio/mpeg,audio/wav,audio/*" className="block text-xs" onChange={(e) => { const f = e.target.files?.[0]; if (f) setVoice({ url: URL.createObjectURL(f), name: f.name }); }} />
-          <button disabled={tts.busy} onClick={genVoice} className="h-7 rounded-md border border-border px-2 disabled:opacity-50">{tts.busy ? "Генерация…" : "Сгенерировать озвучку (~$0.01 fal)"}</button>
+          <button disabled={tts.busy || !approved} onClick={genVoice} className="h-7 rounded-md border border-border px-2 disabled:opacity-50">{tts.busy ? "Генерация…" : "Сгенерировать озвучку (~$0.01 fal)"}</button>
           <div className="text-muted-foreground">Платно: списывается с баланса fal.ai. Повторно не отправляется.</div>
           {tts.msg && <div className="break-all">{tts.msg}</div>}
           <div className="text-muted-foreground">{voice ? `Загружено: ${voice.name}` : "Озвучка не загружена — экспорт будет без звука."}</div></div>
