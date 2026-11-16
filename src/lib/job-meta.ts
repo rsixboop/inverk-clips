@@ -44,6 +44,8 @@ export const STORY_STAGES = [STAGES[0],
   { key: "shot_check_submit", label: "Конечный кадр шота" }, { key: "shot_check_wait", label: "Проверка действия" },
   { key: "sfx_submit", label: "Звуки: fal MMAudio" }, { key: "sfx_wait", label: "Ожидание звуков" },
   { key: "mix", label: "Микс: голос поверх приглушённых эффектов" },
-  ...STAGES.slice(12),
+  { key: "shot_scale_submit", label: "Шоты → 1080×1920: fal scale-video" }, { key: "shot_scale_wait", label: "Ожидание кадрирования шотов" },
+  { key: "remux", label: "Склейка шотов и голоса (в приложении)" },
+  ...STAGES.slice(15),
 ] as const;
 export const stagesFor = (route: string) => (route === "clip" ? CLIP_STAGES : route === "story" ? STORY_STAGES : STAGES) as readonly { key: string; label: string }[];

@@ -54,6 +54,11 @@ export function supabaseStore(db: SupabaseClient<Database>): Store {
       const { error } = await db.storage.from("outputs").upload(path, bytes, { contentType: mime, upsert: true });
       if (error) throw new Error(`Сохранение файла: ${error.message}`);
     },
+    async downloadAsset(path) {
+      const { data, error } = await db.storage.from("outputs").download(path);
+      if (error || !data) throw new Error(`Не удалось прочитать файл сборки: ${error?.message ?? "нет данных"}`);
+      return new Uint8Array(await data.arrayBuffer());
+    },
     async signAsset(path) {
       const { data, error } = await db.storage.from("outputs").createSignedUrl(path, SIGNED_URL_SECONDS);
       if (error || !data) throw new Error("Не удалось подписать ссылку на файл");

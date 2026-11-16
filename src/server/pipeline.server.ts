@@ -6,7 +6,7 @@
 // never auto-resubmitted (manual retry with explicit confirmation only).
 import type { Database } from "@/integrations/supabase/types";
 import { generateResponse } from "@lovable.dev/ai-gateway";
-import { FAL, falConfigured, falSubmit, falPoll, providerMedia, scaleInput, captionInput, validMoments } from "@/lib/providers/fal";
+import { FAL, falCapabilities, falConfigured, falSubmit, falPoll, providerMedia, scaleInput, captionInput, validMoments, type Capability } from "@/lib/providers/fal";
 import { atlasConfigured, atlasSubmit, atlasPoll, ATLAS_TTS, ATLAS_IMAGE, ttsInput, imageInput } from "@/lib/providers/atlas";
 import { ProviderError } from "@/lib/providers/http";
 import { tavilySearch, tavilyConfigured, type ResearchHit } from "@/lib/providers/tavily";
@@ -35,6 +35,7 @@ export interface Store {
   removeOutput(path: string): Promise<void>;
   uploadAsset(path: string, bytes: Uint8Array, mime: string): Promise<void>;
   signAsset(path: string): Promise<string>;
+  downloadAsset(path: string): Promise<Uint8Array>;
 }
 export type Deps = {
   ai: (instructions: string, user: string, images?: string[]) => Promise<any>;
@@ -46,7 +47,26 @@ export type Deps = {
   fetchMedia: (url: string) => Promise<Uint8Array>;
   signJob: (id: string) => Promise<string>;
   now: () => number;
+  /** Optional preflight of provider endpoints (absent in older fixtures = skipped). */
+  falCapabilities?: (models: string[]) => Promise<Capability[]>;
 };
+/** Every fal endpoint a route needs end-to-end; preflighted before the first paid call so a denied
+ * downstream renderer stops the job before money is spent on generation. */
+export const ROUTE_ENDPOINTS: Record<string, string[]> = {
+  story: [FAL.tts, FAL.image, FAL.imageEdit, FAL.i2v, FAL.frames, FAL.sfx, FAL.scale, FAL.captions],
+  clip: [FAL.metadata, FAL.whisper, FAL.trim, FAL.compose, FAL.scale, FAL.captions],
+  compose: [FAL.trim, FAL.metadata, FAL.compose, FAL.scale, FAL.captions],
+};
+const CAPS_FRESH_MS = 30 * 60e3;
+async function preflight(c: Ctx): Promise<string | null> {
+  if (!c.deps.falCapabilities || !c.deps.falConfigured()) return null;
+  const prev = P(c.job).capabilities;
+  if (prev?.ok === true && c.deps.now() - Number(prev.checked_at) < CAPS_FRESH_MS) return null;
+  const caps = await c.deps.falCapabilities(ROUTE_ENDPOINTS[c.job.route] ?? []);
+  const denied = caps.filter((x) => x.ok === false);
+  await setPlan(c, { capabilities: { checked_at: c.deps.now(), ok: !denied.length, results: caps.map(({ model, ok, status, reason }) => ({ model, ok, status, reason })) } });
+  return denied.length ? `Остановлено до оплаты: недоступно ${denied.map((d) => `${d.model} — ${d.reason}`).join("; ")}. Без этого готовый MP4 собрать нельзя, поэтому платные шаги не запускаются.` : null;
+}
 
 export const LEASE_MS = 120_000;
 const RENDER_TIMEOUT_MS = 20 * 60e3;
@@ -103,7 +123,7 @@ async function onError(c: Ctx, e: unknown) {
     const wait = backoff(job.attempts);
     await patch(c, { attempts: job.attempts + 1, next_attempt_at: new Date(c.deps.now() + wait * 1000).toISOString() });
     await log(c, job.stage, `${err.message} — повтор через ${wait} с (попытка ${job.attempts}/${MAX_ATTEMPTS})`, "warn");
-  } else await fail(c, job.stage, err.message, err.message.startsWith("Не подключено") ? "blocked" : "failed");
+  } else await fail(c, job.stage, err.message, err.message.startsWith("Не подключено") || pe?.kind === "forbidden" ? "blocked" : "failed");
 }
 
 async function source(c: Ctx, id: string | null) { return id ? c.store.getSource(c.job.user_id, id) : null; }
@@ -119,6 +139,8 @@ export async function submitTask(c: Ctx, key: string, provider: "fal" | "atlas",
   if (previous?.id) { await patch(c, { stage: waitStage }); return; }
   if (previous?.state === "submitting") throw new ProviderError(AMBIGUOUS_MSG(provider), 0, false);
   if (!(provider === "fal" ? c.deps.falConfigured() : c.deps.atlasConfigured())) return fail(c, c.job.stage, `Не подключено: ${provider === "fal" ? "FAL_KEY" : "ATLAS_CLOUD_API_KEY"}`, "blocked");
+  const blocked = await preflight(c);
+  if (blocked) return fail(c, c.job.stage, blocked, "blocked");
   // Per-job spend cap (story route): estimated cost is booked at the barrier, before the paid call.
   const budget = P(c.job).budget_usd, spent = Number(P(c.job).spend_usd ?? 0), est = estimateCost(model);
   if (typeof budget === "number" && spent + est > budget + 1e-9) return fail(c, c.job.stage, `Лимит расходов задачи: потрачено ~$${spent.toFixed(2)} из $${budget.toFixed(2)}, следующий шаг ~$${est.toFixed(2)}. Остановлено без новой оплаты.`, "blocked");
@@ -371,6 +393,7 @@ export async function signJob(jobId: string) {
 export const realDeps = (): Deps => ({
   ai, tavilyConfigured, tavilySearch, falConfigured, falSubmit, falPoll, atlasConfigured, atlasSubmit, atlasPoll,
   inspectDirectVideo, fetchOutput: (u, r) => fetchOutput(u, r), fetchMedia: (u) => fetchOutput(u, "media", { maxBytes: 30 * 1024 * 1024 }), signJob, now: () => Date.now(),
+  falCapabilities: (models) => falCapabilities(models),
 });
 
 /** Entry point for server code: admin client, one bounded stage. */

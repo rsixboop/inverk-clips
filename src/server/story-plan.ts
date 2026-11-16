@@ -23,7 +23,7 @@ export const COST_USD: Record<string, number> = {
   "fal-ai/kokoro/american-english": 0.01, "fal-ai/nano-banana": 0.04, "fal-ai/nano-banana/edit": 0.04,
   "fal-ai/kling-video/v2.5-turbo/pro/image-to-video": 0.35, "fal-ai/mmaudio-v2/text-to-audio": 0.01,
   "fal-ai/ffmpeg-api/metadata": 0.005, "fal-ai/ffmpeg-api/compose": 0.02, "fal-ai/workflow-utilities/scale-video": 0.02,
-  "fal-ai/workflow-utilities/auto-subtitle": 0.03, "fal-ai/whisper": 0,
+  "fal-ai/workflow-utilities/auto-subtitle": 0.03, "fal-ai/workflow-utilities/extract-nth-frame": 0.005, "fal-ai/whisper": 0,
 };
 export const estimateCost = (model: string) => COST_USD[model] ?? 0.02;
 

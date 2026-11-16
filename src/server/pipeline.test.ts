@@ -34,7 +34,7 @@ function memStore(job: Partial<Job>, sources: Src[] = []) {
     async uploadOutput(p) { uploads.add(p); },
     async removeOutput(p) { uploads.delete(p); },
     async uploadAsset(p) { uploads.add(p); },
-    async signAsset(p) { return "https://signed.example/" + p; },
+    async signAsset(p) { return "https://signed.example/" + p; }, async downloadAsset() { return new Uint8Array(); },
   };
   // simulates jobAction("cancel"): status change + lease token cleared
   const cancel = () => { row.status = "cancelled"; row.lease_token = null; row.lock_until = null; };
