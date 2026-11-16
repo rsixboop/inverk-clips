@@ -258,7 +258,6 @@ export function JobDetails({ job }: { job: Job }) {
         })}
       </ol>
 
-      {job.route === "story" && plan.story_summary && (
         {job.route === "story" && job.workflow_version === 2 && !["succeeded", "cancelled"].includes(job.status) && <div className="space-y-1.5 rounded-md border border-border p-2.5 text-xs">
           <div className="label-xs">Лимит расходов (USD)</div>
           <p className="font-mono text-[11px] text-muted-foreground">Потрачено ~${Number(plan.spend_usd ?? 0).toFixed(2)} · текущий лимит ${Number(plan.budget_usd ?? 0).toFixed(2)}</p>
@@ -267,6 +266,7 @@ export function JobDetails({ job }: { job: Job }) {
             <Button size="sm" variant="outline" disabled={!budget} onClick={async () => { try { const r = await saveBudget({ data: { jobId: job.id, budgetUsd: Number(budget) } }); setBudget(""); toast.success(r.resumed ? "Лимит сохранён, задача продолжается" : "Лимит сохранён"); qc.invalidateQueries({ queryKey: ["jobs"] }); qc.invalidateQueries({ queryKey: ["events"] }); } catch (e) { toast.error((e as Error).message); } }}>Сохранить и продолжить</Button>
           </div>
         </div>}
+      {job.route === "story" && plan.story_summary && (
         <div className="space-y-1.5 rounded-md border border-border p-2.5 text-xs">
           <div className="label-xs">Сюжет · калибровка {plan.calibration_version}</div>
           <p>{plan.story_summary.synopsis}</p>
