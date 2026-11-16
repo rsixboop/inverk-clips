@@ -118,7 +118,7 @@ describe("story state machine (fixtures)", () => {
   it("REGRESSION 50e227d5: fal 422 no_media_generated on a frame result → one compact retry under a new key, earlier assets reused", async () => {
     const { ProviderError, classifyProviderError, humanProviderError } = await import("@/lib/providers/http");
     const d422 = classifyProviderError(422, JSON.stringify({ detail: [{ loc: ["body"], msg: "The model did not generate the expected output", type: "no_media_generated", input: { prompt: "secret-ish long prompt" } }] }));
-    const m = mem({ stage: "frame_wait" }); await processJob(m.store, deps({ ai: async () => good() }), "j");
+    const m = mem({ stage: "story_plan" }); await processJob(m.store, deps({ ai: async () => good() }), "j");
     Object.assign(m.row, { stage: "frame_wait", next_attempt_at: new Date(0).toISOString() });
     Object.assign(m.row.plan as any, { cur: 1, retry: 0, spend_usd: 0.16, voices: [{ url: "v" }], frames: [{ url: "https://v3b.fal.media/f0.png" }],
       provider_tasks: { voice0_s100: { state: "done", id: "v0" }, frame0_r0: { state: "done", id: "f0" }, frame1_r0: { provider: "fal", model: "fal-ai/nano-banana/edit", state: "submitted", id: "f1", submitted_at: Date.now() } } });
@@ -138,7 +138,7 @@ describe("story state machine (fixtures)", () => {
   it("a second no_media for the same frame fails visibly without a third paid call", async () => {
     const { ProviderError, classifyProviderError } = await import("@/lib/providers/http");
     const d422 = classifyProviderError(422, JSON.stringify({ detail: [{ type: "no_media_generated", msg: "x" }] }));
-    const m = mem({ stage: "frame_wait" }); await processJob(m.store, deps({ ai: async () => good() }), "j");
+    const m = mem({ stage: "story_plan" }); await processJob(m.store, deps({ ai: async () => good() }), "j");
     Object.assign(m.row, { stage: "frame_wait", next_attempt_at: new Date(0).toISOString() });
     Object.assign(m.row.plan as any, { cur: 1, retry: 1, frames: [{ url: "u" }], provider_tasks: { frame1_r1: { provider: "fal", model: "fal-ai/nano-banana/edit", state: "submitted", id: "f", submitted_at: Date.now() } } });
     const submit = vi.fn(); await processJob(m.store, deps({ falPoll: async () => { throw new ProviderError("no media", 422, false, false, d422); }, falSubmit: submit as any }), "j");
