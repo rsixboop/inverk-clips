@@ -1,5 +1,6 @@
 // Minimal WAV (RIFF PCM16 / float32) decode, narrator-first mix with ducking, and PCM16 encode.
 // Runs inside the Worker so the app owns the voice/SFX balance (fal compose has no gain control).
+import Mp3 from "js-mp3";
 export type Pcm = { rate: number; channels: Float32Array[] };
 
 export function decodeWav(buf: Uint8Array): Pcm {
@@ -24,7 +25,18 @@ export function decodeWav(buf: Uint8Array): Pcm {
   }
   return { rate: fmt.rate, channels };
 }
-export const wavDuration = (buf: Uint8Array) => { const p = decodeWav(buf); return (p.channels[0]?.length ?? 0) / p.rate; };
+/** MP3 (ID3 tag or MPEG frame sync) → PCM via pure-JS decoder (16-bit stereo interleaved output). */
+export const isMp3 = (b: Uint8Array) => (b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) || (b[0] === 0xff && (b[1]! & 0xe0) === 0xe0);
+export function decodeAudio(buf: Uint8Array): Pcm {
+  if (!isMp3(buf)) return decodeWav(buf);
+  const d = Mp3.newDecoder(buf.slice().buffer);
+  if (!d) throw new Error("MP3 не удалось прочитать");
+  const raw = d.decode(), v = new DataView(raw), frames = Math.floor(raw.byteLength / 4);
+  const L = new Float32Array(frames), R = new Float32Array(frames);
+  for (let i = 0; i < frames; i++) { L[i] = v.getInt16(i * 4, true) / 32768; R[i] = v.getInt16(i * 4 + 2, true) / 32768; }
+  return { rate: d.sampleRate, channels: [L, R] };
+}
+export const wavDuration = (buf: Uint8Array) => { const p = decodeAudio(buf); return (p.channels[0]?.length ?? 0) / p.rate; };
 
 function mono(p: Pcm, rate: number): Float32Array {
   const n = p.channels[0]?.length ?? 0, out = new Float32Array(Math.floor((n * rate) / p.rate));
