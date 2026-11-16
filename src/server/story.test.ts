@@ -207,11 +207,10 @@ describe("REGRESSION 50e227d5 (2): fal-ai/ffmpeg-api 403 on metadata → permitt
   });
   it("muxer output: one H.264 track with all samples + PCM narration, duration = sum of clips", () => {
     const a = fx("shot-5s-a.mp4"), b = fx("shot-5s-b.mp4");
-    const out = muxClipsWithPcm([a, b], { samples: new Float32Array(24000 * 10), rate: 24000 });
-    const info = inspectMp4(out); const t = readVideoTrack(out);
-    expect(info.video?.codec).toMatch(/^avc1$/); expect(info.audio?.codec).toBe("sowt");
-    expect(t.samples.length).toBe(readVideoTrack(a).samples.length + readVideoTrack(b).samples.length);
-    expect(info.durationS).toBeCloseTo(10, 0);
+    const mixed = inspectMp4(muxClipsWithPcm([a, b], { samples: new Float32Array(24000 * 10), rate: 24000 }));
+    expect(mixed.video?.codec).toBe("avc1"); expect(mixed.audio?.codec).toBe("sowt"); expect(mixed.durationS).toBeCloseTo(10, 0);
+    const same = muxClipsWithPcm([a, a], { samples: new Float32Array(24000 * 10), rate: 24000 }); // identical SPS → single sample entry
+    expect(readVideoTrack(same).samples.length).toBe(2 * readVideoTrack(a).samples.length);
   });
 });
 });
