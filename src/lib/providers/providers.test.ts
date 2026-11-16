@@ -41,7 +41,7 @@ describe("fal and Atlas adapters (fixtures)", () => {
     expect(scaleInput("u")).toMatchObject({ width: 1080, height: 1920, mode: "crop", codec: "libx264" });
   });
   it("subtitle language keeps EN RU UK and a safe vertical offset", () => {
-    for (const language of ["en", "ru", "uk"]) expect(captionInput("u", language)).toMatchObject({ language, y_offset: -260, words_per_subtitle: 3 });
+    for (const language of ["en", "ru", "uk"]) expect(captionInput("u", language)).toMatchObject({ language, y_offset: -200, words_per_subtitle: 3 });
   });
   it("TTS preserves script and uses documented economical model", () => {
     expect(ttsInput("Привіт")).toEqual({ model: "google/gemini-2.5-flash-tts", text: "Привіт", voice: "Kore" });
