@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/studio/AppShell";
+import { CATALOG, findAsset, pickAssets } from "@/lib/news-catalog";
 import { MEDIA_LIBRARY, NEWS_SOURCE, PILOT, pilotValid, totalSeconds, type Shot } from "@/lib/news-pilot";
 
 export const Route = createFileRoute("/news")({
@@ -12,7 +13,7 @@ export const Route = createFileRoute("/news")({
   component: () => <AppShell>{() => <News />}</AppShell>,
 });
 
-type Media = { url: string; video: boolean; name: string } | null;
+type Media = { url: string; video: boolean; name: string; state: "loading" | "ok" | "error"; err?: string } | null;
 const W = 1080, H = 1920;
 
 function wrap(ctx: CanvasRenderingContext2D, text: string, max: number) {
@@ -23,7 +24,7 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, max: number) {
 
 function News() {
   const [shots, setShots] = useState<Shot[]>(PILOT);
-  const [media, setMedia] = useState<Media[]>([null, null, null, null]);
+  const [media, setMedia] = useState<Media[]>(() => pickAssets(PILOT).map((id) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
   const [allowed, setAllowed] = useState(false);
   const [status, setStatus] = useState("");
   const [out, setOut] = useState<{ url: string; ext: string } | null>(null);
@@ -31,11 +32,17 @@ function News() {
   const audio = useRef<{ el: HTMLAudioElement; ctx: AudioContext; dest: MediaStreamAudioDestinationNode } | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const els = useRef<(HTMLImageElement | HTMLVideoElement | null)[]>([]);
-  const ready = allowed && media.every(Boolean) && pilotValid(shots);
+  const ready = allowed && media.every((m) => m?.state === "ok") && pilotValid(shots);
 
   useEffect(() => { els.current = media.map((m) => { if (!m) return null;
     if (m.video) { const v = document.createElement("video"); v.src = m.url; v.muted = true; v.playsInline = true; return v; }
-    const i = new Image(); i.src = m.url; return i; }); }, [media]);
+    const i = new Image(); i.src = m.url; return i; }); }, [media.map((m) => m?.url).join("|")]);
+  const setState = (url: string, state: "ok" | "error", err?: string) => setMedia((ms) => ms.map((x) => (x && x.url === url && x.state === "loading" ? { ...x, state, err } : x)));
+  useEffect(() => { media.forEach((m) => { if (!m || m.state !== "loading") return;
+    if (m.url.startsWith("blob:")) { setState(m.url, "ok"); return; }
+    fetch(m.url).then(async (r) => { if (!r.ok) setState(m.url, "error", await r.text()); else { const i = new Image(); i.onload = () => setState(m.url, "ok"); i.onerror = () => setState(m.url, "error", "не декодируется"); i.src = m.url; } })
+      .catch(() => setState(m.url, "error", "сеть")); }); }, [media]);
+  const pickCatalog = (i: number, id: string) => { const a = findAsset(id); if (a) setMedia((m) => m.map((x, k) => (k === i ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : x))); };
 
   function draw(i: number) {
     const ctx = canvas.current!.getContext("2d")!, el = els.current[i];
@@ -104,8 +111,9 @@ function News() {
             <textarea value={s.text} onChange={(e) => upd(i, { text: e.target.value })} rows={2} className="w-full rounded border border-input bg-muted p-2 text-xs" />
             <div className="text-xs text-muted-foreground">Материал: {s.material}</div>
             <input type="file" accept="video/mp4,image/*" className="text-xs" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return;
-              setMedia((m) => m.map((x, k) => (k === i ? { url: URL.createObjectURL(f), video: f.type.startsWith("video"), name: f.name } : x))); }} />
-            {media[i] && <div className="text-xs text-muted-foreground">Загружено: {media[i]!.name}</div>}
+              setMedia((m) => m.map((x, k) => (k === i ? { url: URL.createObjectURL(f), video: f.type.startsWith("video"), name: f.name, state: "ok" } : x))); }} />
+            <select className="h-7 rounded border border-input bg-muted text-xs" value="" onChange={(e) => pickCatalog(i, e.target.value)}><option value="">Скриншот Rockstar…</option>{CATALOG.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}</select>
+            {media[i] && <div className={`text-xs ${media[i]!.state === "error" ? "text-destructive" : "text-muted-foreground"}`}>{media[i]!.name} — {media[i]!.state === "ok" ? "загружено" : media[i]!.state === "loading" ? "загрузка…" : `ошибка: ${media[i]!.err}`}</div>}
           </div>
         ))}
         <label className="flex gap-2 text-xs"><input type="checkbox" checked={allowed} onChange={(e) => setAllowed(e.target.checked)} />Я подтверждаю, что имею право использовать загруженные материалы (свои файлы или разрешённые официальные медиа Rockstar).</label>
@@ -117,7 +125,7 @@ function News() {
         <canvas ref={canvas} width={W} height={H} className="aspect-[9/16] w-full rounded bg-muted" />
         <button disabled={!media.some(Boolean)} onClick={() => play(false)} className="h-8 w-full rounded-md border border-border text-xs disabled:opacity-50">Предпросмотр раскадровки</button>
         <button disabled={!ready} onClick={() => play(true)} className="h-8 w-full rounded-md bg-primary text-xs text-primary-foreground disabled:opacity-50">{voice ? "Экспорт видео с озвучкой" : "Экспорт видео (без звука)"}</button>
-        {!ready && <p className="text-[11px] text-muted-foreground">Для экспорта: 4 файла, подтверждение прав, 18–23 с.</p>}
+        {!ready && <p className="text-[11px] text-muted-foreground">Для экспорта: все 4 медиа загружены, подтверждение прав, 18–23 с.</p>}
         <p className="text-xs">{status}</p>
         {out && <a href={out.url} download={`gta6-30fps${voice ? "" : "-no-sound"}.${out.ext}`} className="block text-xs text-primary underline">Скачать .{out.ext}</a>}
       </div>
