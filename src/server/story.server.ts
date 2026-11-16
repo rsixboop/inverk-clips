@@ -3,7 +3,7 @@
 // Every paid call goes through submitTask (barrier + per-job spend cap); retries are bounded to one per asset.
 import { FAL, endFramesInput, providerMedia, scaleInput } from "@/lib/providers/fal";
 import { ProviderError } from "@/lib/providers/http";
-import { decodeWav, encodeWav16, mixNarratorFirst, wavDuration } from "@/lib/wav";
+import { decodeAudio, decodeWav, encodeWav16, mixNarratorFirst, wavDuration } from "@/lib/wav";
 import { inspectMp4 } from "@/lib/mp4-inspect";
 import { muxClipsWithPcm } from "@/lib/mp4-mux";
 import { type Ctx, P, fail, log, patch, pollTask, setPlan, submitTask } from "./pipeline.server";
@@ -157,8 +157,8 @@ export async function storyStep(c: Ctx): Promise<boolean> {
     }
     case "mix": {
       const timing = plan.voice_timing;
-      const voice = await Promise.all((plan.voices as any[]).map(async (v, i) => ({ pcm: decodeWav(await deps.fetchMedia(v.url)), at: timing.slots[i].start })));
-      const sfx = await Promise.all((plan.sfx as any[]).map(async (s, i) => ({ pcm: decodeWav(await deps.fetchMedia(s.url)), at: i * SCENE_SECONDS })));
+      const voice = await Promise.all((plan.voices as any[]).map(async (v, i) => ({ pcm: decodeAudio(await deps.fetchMedia(v.url)), at: timing.slots[i].start })));
+      const sfx = await Promise.all((plan.sfx as any[]).map(async (s, i) => ({ pcm: decodeAudio(await deps.fetchMedia(s.url)), at: i * SCENE_SECONDS })));
       const m = mixNarratorFirst(voice, sfx, SCENES * SCENE_SECONDS);
       if (m.stats.voiceRmsDb < -35) { await fail(c, "mix", "Голос диктора слишком тихий или отсутствует — сборка остановлена"); return true; }
       const path = `${job.user_id}/${job.id}/mix_r${job.render_attempt}.wav`;
