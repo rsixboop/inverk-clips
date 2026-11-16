@@ -8,4 +8,6 @@
 - [x] Deliver one 16s original stylized gaming meme under the existing owner's account; fal tariff estimate $0.018, supervised motion-render import
 - [x] Verify real 1080×1920 H.264/AAC MP4, authenticated Library playback and download; desktop/mobile checked
 - [x] Story route: autonomous plan/validate, narrator-first, QC'd frames/shots, ducked mix, spend cap, background drain
+- [x] Replace denied fal ffmpeg-api in the story route (extract-nth-frame, scale-video, in-Worker remux) + capability preflight; resume job 50e227d5
+- [ ] Move compose/clip routes off fal ffmpeg-api (blocked by preflight until then)
 - [ ] Review first automatic story video and tune calibration from feedback (waiting on user review)
