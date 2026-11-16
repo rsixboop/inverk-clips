@@ -36,3 +36,19 @@ export function pickAssets(shots: { text: string; material: string }[]): string[
     used.add(best.a.id); return best.a.id;
   });
 }
+
+// Official GTA VI character clips (https://www.rockstargames.com/VI/media/videos). HEAD-verified 200 video/mp4, 5.9–16 MB.
+// Rockstar sends no CORS header for these, so they are served only through the fixed-ID proxy (never arbitrary URLs).
+export type CatalogClip = { id: string; title: string; file: string };
+export const CLIPS: CatalogClip[] = [
+  { id: "c-jason", title: "Jason Duval", file: "Jason_Duval_Video_Clip.10.gc09c9y-j9.mp4" },
+  { id: "c-lucia", title: "Lucia Caminos", file: "Lucia_Caminos_Video_Clip.0g8.3fx84ixw..mp4" },
+  { id: "c-cal", title: "Cal Hampton", file: "Cal_Hampton_Video_Clip.13-520tpb1vbq.mp4" },
+  { id: "c-boobie", title: "Boobie Ike", file: "Boobie_Ike_Video_Clip.0yf7eprhr68rj.mp4" },
+  { id: "c-dre", title: "DreQuan Priest", file: "DreQuan_Priest_Video_Clip.0g~ify.ccqpkj.mp4" },
+  { id: "c-dimez", title: "Real Dimez", file: "Real_Dimez_Video_Clip.0.cgr_26mspvm.mp4" },
+  { id: "c-raul", title: "Raul Bautista", file: "Raul_Bautista_Video_Clip.0vg4g-gyqaksg.mp4" },
+  { id: "c-brian", title: "Brian Heder", file: "Brian_Heder_Video_Clip.0yy.ets6sso8~.mp4" },
+];
+export const clipUrl = (c: CatalogClip) => `${BASE}${c.file}`;
+export const findClip = (id: string) => CLIPS.find((c) => c.id === id);
