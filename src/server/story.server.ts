@@ -2,6 +2,7 @@
 // image-to-video shots (end-frame QC) → SFX → in-Worker narrator-first mix → shared compose/scale/captions/finalize.
 // Every paid call goes through submitTask (barrier + per-job spend cap); retries are bounded to one per asset.
 import { FAL, providerMedia } from "@/lib/providers/fal";
+import { ProviderError } from "@/lib/providers/http";
 import { decodeWav, encodeWav16, mixNarratorFirst, wavDuration } from "@/lib/wav";
 import { type Ctx, P, fail, log, patch, pollTask, setPlan, submitTask } from "./pipeline.server";
 import {
@@ -23,6 +24,19 @@ async function vision(c: Ctx, checks: string[], images: string[], extra = "") {
   return { pass: res.every((r) => r.pass), checks: res };
 }
 
+/** Poll a task; when the model produced no media (fal `no_media_generated`), use the asset's single bounded
+ * retry with a new key and a compact prompt instead of failing the whole job. Returns null when handled/pending. */
+async function pollAsset(c: Ctx, key: string, kind: "frame" | "shot", usd: number) {
+  try { return await pollTask(c, key); }
+  catch (e) {
+    if (!(e instanceof ProviderError) || e.kind !== "no_media") throw e;
+    if (!canRetry(c, usd)) { await fail(c, c.job.stage, `${e.message} Повтор для этого ${kind === "frame" ? "кадра" : "шота"} уже использован или превышен лимит расходов.`); return null; }
+    await setPlan(c, { retry: retry(c) + 1, compact_prompt: true }, { stage: `${kind}_submit`, attempts: 0 });
+    await log(c, c.job.stage, `${key}: модель не вернула результат (no_media_generated) — один повтор с упрощённым запросом`, "warn");
+    return null;
+  }
+}
+
 export async function storyStep(c: Ctx): Promise<boolean> {
   const { job, deps } = c, plan = P(job), t = deps.now();
   switch (job.stage) {
@@ -30,7 +44,7 @@ export async function storyStep(c: Ctx): Promise<boolean> {
       const issues: string[] = plan.story_issues ?? [];
       const user = `Language: English narration. Request: ${job.prompt}${plan.feedback?.length ? `\nUser feedback on earlier videos: ${plan.feedback.join(" | ")}` : ""}${issues.length ? `\nYour previous plan failed validation. Fix ALL of these and return a complete plan:\n- ${issues.join("\n- ")}\nPrevious plan: ${JSON.stringify(plan.story_draft).slice(0, 12000)}` : ""}`;
       const sp = normalizePlan(await deps.ai(planInstructions(), user));
-      const found = validatePlan(sp, { allowNeon: /neon/i.test(job.prompt) });
+      const found = validatePlan(sp, { allowNeon: /neon/i.test(job.prompt), prompt: job.prompt });
       const repairs = Number(plan.story_repairs ?? 0);
       if (found.length) {
         if (repairs >= MAX_REPAIRS) { await fail(c, "story_plan", `План не прошёл проверку после ${repairs} исправлений: ${found.slice(0, 4).join(" ")}`); return true; }
@@ -81,23 +95,23 @@ export async function storyStep(c: Ctx): Promise<boolean> {
       return true;
     }
     case "frame_submit": {
-      const i = cur(c), r = retry(c), sp = story(c), fix = plan.frame_fix ? ` Fix: ${plan.frame_fix}.` : "";
+      const i = cur(c), r = retry(c), sp = story(c), compact = plan.compact_prompt === true, fix = plan.frame_fix && !compact ? ` Fix: ${plan.frame_fix}.` : "";
       const ref = plan.frames?.[0]?.url;
       if (i === 0 && r === 0) await submitTask(c, `frame0_r0`, "fal", FAL.image, { prompt: framePrompt(sp, 0, true), aspect_ratio: "9:16", num_images: 1, output_format: "png" }, "frame_wait");
-      else await submitTask(c, `frame${i}_r${r}`, "fal", FAL.imageEdit, { prompt: framePrompt(sp, i, false) + fix, image_urls: [i === 0 ? plan.frame_prev : ref].filter(Boolean), aspect_ratio: "9:16", num_images: 1, output_format: "png" }, "frame_wait");
+      else await submitTask(c, `frame${i}_r${r}`, "fal", FAL.imageEdit, { prompt: framePrompt(sp, i, false, compact) + fix, image_urls: [i === 0 ? plan.frame_prev : ref].filter(Boolean), aspect_ratio: "9:16", num_images: 1, output_format: "png" }, "frame_wait");
       return true;
     }
     case "frame_wait": {
       const i = cur(c), r = retry(c);
-      const res = await pollTask(c, `frame${i}_r${r}`); if (!res) return true;
+      const res = await pollAsset(c, `frame${i}_r${r}`, "frame", 0.04); if (!res) return true;
       const url = providerMedia(res["images"]?.[0]?.url);
       const qc = await vision(c, qcChecks(story(c), i, "start"), [url]);
       if (!qc.pass && canRetry(c, 0.04)) {
-        await setPlan(c, { retry: r + 1, frame_fix: qc.checks.filter((x) => !x.pass).map((x) => `${x.item} (${x.note})`).join("; "), frame_prev: url, frame_qc_log: [...(plan.frame_qc_log ?? []), { i, r, url, qc }] }, { stage: "frame_submit" });
+        await setPlan(c, { retry: r + 1, compact_prompt: false, frame_fix: qc.checks.filter((x) => !x.pass).map((x) => `${x.item} (${x.note})`).join("; "), frame_prev: url, frame_qc_log: [...(plan.frame_qc_log ?? []), { i, r, url, qc }] }, { stage: "frame_submit" });
         await log(c, "frame_wait", `Кадр ${i + 1}: не прошёл проверку (${qc.checks.filter((x) => !x.pass).map((x) => x.item).join(", ")}) — одна правка`, "warn"); return true;
       }
       const frames = setIdx(plan.frames, i, { url, qc, retries: r, defects: qc.checks.filter((x) => !x.pass).map((x) => x.item) });
-      await setPlan(c, { frames, cur: i + 1 < SCENES ? i + 1 : 0, retry: 0, frame_fix: null }, { stage: i + 1 < SCENES ? "frame_submit" : "shot_submit" });
+      await setPlan(c, { frames, cur: i + 1 < SCENES ? i + 1 : 0, retry: 0, frame_fix: null, compact_prompt: false }, { stage: i + 1 < SCENES ? "frame_submit" : "shot_submit" });
       await log(c, "frame_wait", `Кадр ${i + 1}: ${qc.pass ? "проверка пройдена" : "принят с дефектами: " + frames[i].defects.join(", ")}`, qc.pass ? "info" : "warn");
       return true;
     }
@@ -107,7 +121,7 @@ export async function storyStep(c: Ctx): Promise<boolean> {
       return true;
     }
     case "shot_wait": {
-      const i = cur(c), r = retry(c), res = await pollTask(c, `shot${i}_r${r}`); if (!res) return true;
+      const i = cur(c), r = retry(c), res = await pollAsset(c, `shot${i}_r${r}`, "shot", 0.35); if (!res) return true;
       await setPlan(c, { shot_candidate: providerMedia(res["video"]?.url) }, { stage: "shot_check_submit" }); return true;
     }
     case "shot_check_submit": await submitTask(c, `shotmeta${cur(c)}_r${retry(c)}`, "fal", FAL.metadata, { media_url: plan.shot_candidate, extract_frames: true }, "shot_check_wait"); return true;

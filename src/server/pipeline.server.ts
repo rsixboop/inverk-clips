@@ -97,6 +97,8 @@ async function onError(c: Ctx, e: unknown) {
   const err = e as Error;
   const pe = e instanceof ProviderError ? e : null;
   const safeToRepeat = (!job.stage.endsWith("_submit"));
+  // Keep the sanitized provider detail (kind/status/type/field/message, no inputs or keys) for diagnosis.
+  if (pe?.detail && pe.kind !== "no_media") await setPlan(c, { provider_errors: [...(P(job).provider_errors ?? []), { stage: job.stage, at: new Date(c.deps.now()).toISOString(), ...pe.detail }].slice(-10) }).catch(() => {});
   if (pe?.retryable && (!pe.ambiguous || safeToRepeat) && job.attempts < MAX_ATTEMPTS) {
     const wait = backoff(job.attempts);
     await patch(c, { attempts: job.attempts + 1, next_attempt_at: new Date(c.deps.now() + wait * 1000).toISOString() });
@@ -111,7 +113,7 @@ async function mediaUrl(c: Ctx, s: Src): Promise<string> {
   throw new Error(`Источник «${s.title}» нельзя использовать как футаж`);
 }
 
-type Task = { provider: "fal" | "atlas"; model: string; state: "submitting" | "submitted" | "done"; id?: string; submitted_at: number; result?: Record<string, any> };
+type Task = { provider: "fal" | "atlas"; model: string; state: "submitting" | "submitted" | "done" | "failed"; error?: unknown; id?: string; submitted_at: number; result?: Record<string, any> };
 export async function submitTask(c: Ctx, key: string, provider: "fal" | "atlas", model: string, input: Record<string, unknown>, waitStage = `${key}_wait`) {
   const tasks = P(c.job).provider_tasks ?? {}, previous: Task | undefined = tasks[key];
   if (previous?.id) { await patch(c, { stage: waitStage }); return; }
@@ -137,8 +139,15 @@ export async function pollTask(c: Ctx, key: string): Promise<Record<string, any>
   const tasks = P(c.job).provider_tasks ?? {}, task: Task | undefined = tasks[key];
   if (!task?.id) throw new Error("Нет ID запроса провайдера; автоматическая повторная отправка запрещена");
   if (task.state === "done" && task.result) return task.result;
+  if (task.state === "failed") throw new ProviderError("Запрос провайдера уже завершился без результата; нужен новый запрос", 0, false, false, task.error as any);
   if (c.deps.now() - task.submitted_at > RENDER_TIMEOUT_MS) throw new Error("Таймаут операции провайдера (20 минут)");
-  const r = await (task.provider === "fal" ? c.deps.falPoll(task.model, task.id) : c.deps.atlasPoll(task.model, task.id));
+  let r: Awaited<ReturnType<Deps["falPoll"]>>;
+  try { r = await (task.provider === "fal" ? c.deps.falPoll(task.model, task.id) : c.deps.atlasPoll(task.model, task.id)); }
+  catch (e) {
+    // Provider finished without output: record it on the task (never resubmitted under the same key).
+    if (e instanceof ProviderError && e.kind === "no_media") await setPlan(c, { provider_tasks: { ...tasks, [key]: { ...task, state: "failed", error: e.detail } }, provider_errors: [...(P(c.job).provider_errors ?? []), { stage: c.job.stage, key, request_id: task.id, at: new Date(c.deps.now()).toISOString(), ...e.detail }].slice(-10) });
+    throw e;
+  }
   if (r.state === "processing") { await patch(c, { next_attempt_at: new Date(c.deps.now() + PROVIDER_POLL_MS).toISOString() }); return null; }
   await setPlan(c, { provider_tasks: { ...tasks, [key]: { ...task, state: "done", result: r.result } } });
   return r.result;
