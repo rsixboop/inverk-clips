@@ -95,7 +95,7 @@ export async function storyStep(c: Ctx): Promise<boolean> {
       return true;
     }
     case "frame_submit": {
-      const i = cur(c), r = retry(c), sp = story(c), fix = plan.frame_fix ? ` Fix: ${plan.frame_fix}.` : "";
+      const i = cur(c), r = retry(c), sp = story(c), compact = plan.compact_prompt === true, fix = plan.frame_fix && !compact ? ` Fix: ${plan.frame_fix}.` : "";
       const ref = plan.frames?.[0]?.url;
       if (i === 0 && r === 0) await submitTask(c, `frame0_r0`, "fal", FAL.image, { prompt: framePrompt(sp, 0, true), aspect_ratio: "9:16", num_images: 1, output_format: "png" }, "frame_wait");
       else await submitTask(c, `frame${i}_r${r}`, "fal", FAL.imageEdit, { prompt: framePrompt(sp, i, false, compact) + fix, image_urls: [i === 0 ? plan.frame_prev : ref].filter(Boolean), aspect_ratio: "9:16", num_images: 1, output_format: "png" }, "frame_wait");
