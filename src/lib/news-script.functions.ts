@@ -32,3 +32,13 @@ export const scriptFromArticle = createServerFn({ method: "POST" }).middleware([
     let j: any; try { j = JSON.parse(out ?? ""); } catch { throw new Error("ИИ вернул некорректный ответ"); }
     return { url: data.url, shots: validateScript(j?.shots, text) };
   });
+
+// Broad recent GTA VI news (any site). Non-official sources are flagged; nothing is generated from snippets.
+export const findGtaNews = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).handler(async () => {
+  const { tavilyConfigured, tavilySearch } = await import("@/lib/providers/tavily");
+  if (!tavilyConfigured()) return { error: "Поиск не подключён: нет TAVILY_API_KEY. Пилот сохранён, можно вставить ссылку вручную.", items: [] };
+  try {
+    const hits = await tavilySearch("GTA VI Grand Theft Auto 6 news", 6, { days: 7 });
+    return { error: hits.length ? "" : "За последние дни ничего не найдено.", items: hits.slice(0, 6).map((h) => ({ title: h.title, url: h.url, snippet: h.snippet.slice(0, 220), date: h.date ?? "", official: isNewswireUrl(h.url) })) };
+  } catch (e) { return { error: `Ошибка поиска: ${(e as Error).message}`, items: [] }; }
+});

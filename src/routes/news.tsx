@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { pollNewsVoice, submitNewsVoice } from "@/lib/news-voice.functions";
 import { AppShell } from "@/components/studio/AppShell";
 import { CATALOG, findAsset, pickAssets } from "@/lib/news-catalog";
-import { findNewswire, scriptFromArticle } from "@/lib/news-script.functions";
+import { findGtaNews, findNewswire, scriptFromArticle } from "@/lib/news-script.functions";
 import { MEDIA_LIBRARY, NEWS_SOURCE, PILOT, pilotValid, totalSeconds, type Shot } from "@/lib/news-pilot";
 
 export const Route = createFileRoute("/news")({
@@ -30,6 +30,9 @@ function News() {
   const [media, setMedia] = useState<Media[]>(() => pickAssets(PILOT).map((id) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
   const [source, setSource] = useState(NEWS_SOURCE);
   const [found, setFound] = useState<{ title: string; url: string; date: string }[]>([]);
+  const [news, setNews] = useState<{ title: string; url: string; snippet: string; date: string; official: boolean }[]>([]);
+  const newsFn = useServerFn(findGtaNews);
+  const searchNews = async () => { setNw({ busy: true, msg: "Ищу новости GTA VI за 7 дней…" }); try { const r = await newsFn(); setNews(r.items); setNw({ busy: false, msg: r.error }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
   const [nw, setNw] = useState({ busy: false, msg: "" });
   const [approved, setApproved] = useState(true);
   const findFn = useServerFn(findNewswire), scriptFn = useServerFn(scriptFromArticle);
@@ -143,7 +146,11 @@ function News() {
         <h1 className="text-base font-bold">GTA VI: 30 FPS? — пилот</h1>
         <p className="text-xs text-muted-foreground">Тезисы только из <a className="text-primary underline" href={source} target="_blank" rel="noreferrer">официальной статьи Rockstar</a>. Материалы скачайте сами из <a className="text-primary underline" href={MEDIA_LIBRARY} target="_blank" rel="noreferrer">медиатеки Rockstar</a> и загрузите ниже. Файлы остаются в вашем браузере.</p>
         <div className="rounded-md border border-border p-2 space-y-2 text-xs">
-          <button disabled={nw.busy} onClick={search} className="h-7 rounded-md border border-border px-2">Найти новости GTA VI</button>
+          <button disabled={nw.busy} onClick={searchNews} className="mr-2 h-7 rounded-md border border-border px-2">Найти новости GTA VI</button>
+          {news.map((f) => <label key={f.url} className={`block rounded border p-2 ${source === f.url ? "border-primary" : "border-border"}`}><input type="radio" className="mr-1" checked={source === f.url} onChange={() => setSource(f.url)} /><b>{f.title}</b> {f.date && <span className="text-muted-foreground">{f.date}</span>}
+            {!f.official && <span className="ml-1 text-destructive">проверить первоисточник</span>}<p className="text-muted-foreground">{f.snippet}</p><a href={f.url} target="_blank" rel="noreferrer" className="break-all text-primary underline">{f.url}</a></label>)}
+          <p>Источник: <a href={source} target="_blank" rel="noreferrer" className="break-all text-primary underline">{source}</a> — тексты шотов ниже редактируйте вручную; сценарий по сниппету не создаётся.</p>
+          <button disabled={nw.busy} onClick={search} className="h-7 rounded-md border border-border px-2">Только Rockstar Newswire</button>
           {found.map((f) => <label key={f.url} className="flex gap-2"><input type="radio" checked={source === f.url} onChange={() => setSource(f.url)} />{f.title} {f.date && <span className="text-muted-foreground">{f.date}</span>}</label>)}
           <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="https://www.rockstargames.com/newswire/article/…" className="h-7 w-full rounded border border-input bg-muted px-2" />
           <button disabled={nw.busy} onClick={makeScript} className="h-7 rounded-md bg-primary px-2 text-primary-foreground">Сценарий</button>
