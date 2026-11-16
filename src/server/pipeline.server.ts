@@ -98,7 +98,7 @@ async function onError(c: Ctx, e: unknown) {
   const pe = e instanceof ProviderError ? e : null;
   const safeToRepeat = (!job.stage.endsWith("_submit"));
   // Keep the sanitized provider detail (kind/status/type/field/message, no inputs or keys) for diagnosis.
-  if (pe?.detail) await setPlan(c, { provider_errors: [...(P(job).provider_errors ?? []), { stage: job.stage, at: new Date(c.deps.now()).toISOString(), ...pe.detail }].slice(-10) }).catch(() => {});
+  if (pe?.detail && pe.kind !== "no_media") await setPlan(c, { provider_errors: [...(P(job).provider_errors ?? []), { stage: job.stage, at: new Date(c.deps.now()).toISOString(), ...pe.detail }].slice(-10) }).catch(() => {});
   if (pe?.retryable && (!pe.ambiguous || safeToRepeat) && job.attempts < MAX_ATTEMPTS) {
     const wait = backoff(job.attempts);
     await patch(c, { attempts: job.attempts + 1, next_attempt_at: new Date(c.deps.now() + wait * 1000).toISOString() });
@@ -145,7 +145,7 @@ export async function pollTask(c: Ctx, key: string): Promise<Record<string, any>
   try { r = await (task.provider === "fal" ? c.deps.falPoll(task.model, task.id) : c.deps.atlasPoll(task.model, task.id)); }
   catch (e) {
     // Provider finished without output: record it on the task (never resubmitted under the same key).
-    if (e instanceof ProviderError && e.kind === "no_media") await setPlan(c, { provider_tasks: { ...tasks, [key]: { ...task, state: "failed", error: e.detail } } });
+    if (e instanceof ProviderError && e.kind === "no_media") await setPlan(c, { provider_tasks: { ...tasks, [key]: { ...task, state: "failed", error: e.detail } }, provider_errors: [...(P(c.job).provider_errors ?? []), { stage: c.job.stage, key, request_id: task.id, at: new Date(c.deps.now()).toISOString(), ...e.detail }].slice(-10) });
     throw e;
   }
   if (r.state === "processing") { await patch(c, { next_attempt_at: new Date(c.deps.now() + PROVIDER_POLL_MS).toISOString() }); return null; }
