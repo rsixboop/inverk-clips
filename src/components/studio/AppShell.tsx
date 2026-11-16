@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { Clapperboard, ListOrdered, Library, Link2, Settings, LogOut } from "lucide-react";
+import { Newspaper, Clapperboard, ListOrdered, Library, Link2, Settings, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { useJobs } from "@/hooks/use-jobs";
@@ -9,6 +9,7 @@ const NAV = [
   { to: "/", label: "Студия", icon: Clapperboard },
   { to: "/queue", label: "Очередь", icon: ListOrdered },
   { to: "/library", label: "Библиотека", icon: Library },
+  { to: "/news", label: "GTA VI News", icon: Newspaper },
   { to: "/sources", label: "Источники", icon: Link2 },
   { to: "/settings", label: "Настройки", icon: Settings },
 ] as const;
