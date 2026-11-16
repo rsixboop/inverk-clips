@@ -11,7 +11,7 @@ export function budgetUpdate(job: { route: string; status: string; error: string
   if (job.route !== "story") throw new Error("Лимит меняется только у сюжетных задач");
   if (["succeeded", "cancelled"].includes(job.status)) throw new Error("Задача завершена");
   const plan = (job.plan ?? {}) as Record<string, unknown>;
-  const spent = Number(plan.spend_usd ?? 0);
+  const spent = Number(plan["spend_usd"] ?? 0);
   if (!Number.isFinite(budget) || budget <= spent) throw new Error(`Новый лимит должен быть больше потраченного (~$${spent.toFixed(2)})`);
   if (budget > MAX_BUDGET_USD) throw new Error(`Максимальный лимит — $${MAX_BUDGET_USD}`);
   const upd: Record<string, unknown> = { plan: { ...plan, budget_usd: Math.round(budget * 100) / 100 } };

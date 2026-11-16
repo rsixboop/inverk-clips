@@ -192,6 +192,6 @@ export const setJobBudget = createServerFn({ method: "POST" }).middleware([requi
     const { data: rows, error } = await db.from("jobs").update(upd as any).eq("id", job.id).eq("user_id", context.userId).eq("updated_at", job.updated_at).select("id");
     if (error) throw new Error(error.message);
     if (!rows?.length) throw new Error("Состояние задачи изменилось — обновите и попробуйте снова");
-    await db.from("job_events").insert({ job_id: job.id, user_id: context.userId, stage: job.stage, message: `Лимит расходов: $${(upd.plan as any).budget_usd.toFixed(2)} (потрачено ~$${spent.toFixed(2)})${resume ? ` — продолжаю шаг «${upd.stage}»` : ""}` });
+    await db.from("job_events").insert({ job_id: job.id, user_id: context.userId, stage: job.stage, message: `Лимит расходов: $${(upd["plan"] as any).budget_usd.toFixed(2)} (потрачено ~$${spent.toFixed(2)})${resume ? ` — продолжаю шаг «${upd["stage"]}»` : ""}` });
     return { ok: true, resumed: resume };
   });
