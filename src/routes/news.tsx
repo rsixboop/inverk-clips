@@ -53,7 +53,7 @@ function News() {
       for (let i = 0; i < 60; i++) {
         setTts({ busy: true, msg: `Ожидание fal, запрос ${id}…` });
         const r = await pollFn({ data: { requestId: id } });
-        if (r.state === "done" && r.url) { setVoice({ url: r.url, name: `fal Kokoro (${id})` }); setTts({ busy: false, msg: `Озвучка готова, запрос ${id}` }); return; }
+        if (r.state === "done" && r.url) { const resp = await fetch(r.url); if (!resp.ok) throw new Error(`Не удалось получить готовую озвучку: HTTP ${resp.status}`); const blob = await resp.blob(); if (!blob.size || blob.size > 10 * 1024 * 1024) throw new Error("Некорректный размер аудио"); setVoice({ url: URL.createObjectURL(blob), name: `fal Kokoro (${id})` }); setTts({ busy: false, msg: `Озвучка готова, запрос ${id}` }); return; }
         await new Promise((res) => setTimeout(res, 3000));
       }
       setTts({ busy: false, msg: `fal ещё не ответил (запрос ${id}). Нажмите снова — будет только проверка, без новой оплаты.` });
