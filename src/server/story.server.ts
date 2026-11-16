@@ -1,9 +1,11 @@
 // "story" route stages: plan → narrator-first voice → reference-grounded frames (vision QC) →
 // image-to-video shots (end-frame QC) → SFX → in-Worker narrator-first mix → shared compose/scale/captions/finalize.
 // Every paid call goes through submitTask (barrier + per-job spend cap); retries are bounded to one per asset.
-import { FAL, providerMedia } from "@/lib/providers/fal";
+import { FAL, endFramesInput, providerMedia, scaleInput } from "@/lib/providers/fal";
 import { ProviderError } from "@/lib/providers/http";
 import { decodeWav, encodeWav16, mixNarratorFirst, wavDuration } from "@/lib/wav";
+import { inspectMp4 } from "@/lib/mp4-inspect";
+import { muxClipsWithPcm } from "@/lib/mp4-mux";
 import { type Ctx, P, fail, log, patch, pollTask, setPlan, submitTask } from "./pipeline.server";
 import {
   SCENES, SCENE_SECONDS, SHOT_NEGATIVE, STORY_CALIBRATION, alignVoice, anchorText, framePrompt, normalizePlan,
@@ -124,11 +126,14 @@ export async function storyStep(c: Ctx): Promise<boolean> {
       const i = cur(c), r = retry(c), res = await pollAsset(c, `shot${i}_r${r}`, "shot", 0.35); if (!res) return true;
       await setPlan(c, { shot_candidate: providerMedia(res["video"]?.url) }, { stage: "shot_check_submit" }); return true;
     }
-    case "shot_check_submit": await submitTask(c, `shotmeta${cur(c)}_r${retry(c)}`, "fal", FAL.metadata, { media_url: plan.shot_candidate, extract_frames: true }, "shot_check_wait"); return true;
+    // End frame via permitted workflow-utilities/extract-nth-frame; duration read in-Worker from the MP4 itself
+    // (fal-ai/ffmpeg-api/metadata is access-denied for this account).
+    case "shot_check_submit": await submitTask(c, `shotframes${cur(c)}_r${retry(c)}`, "fal", FAL.frames, endFramesInput(plan.shot_candidate), "shot_check_wait"); return true;
     case "shot_check_wait": {
-      const i = cur(c), r = retry(c), res = await pollTask(c, `shotmeta${i}_r${r}`); if (!res) return true;
-      const m = res["media"] ?? {}, end = typeof m.end_frame_url === "string" ? providerMedia(m.end_frame_url) : null;
-      const duration = Number(m.duration);
+      const i = cur(c), r = retry(c), res = await pollTask(c, `shotframes${i}_r${r}`); if (!res) return true;
+      const imgs: any[] = Array.isArray(res["images"]) ? res["images"] : [], last = imgs.at(-1)?.url;
+      const end = typeof last === "string" ? providerMedia(last) : null;
+      const duration = Number(inspectMp4(await deps.fetchMedia(plan.shot_candidate)).durationS);
       if (!end || !(duration >= SCENE_SECONDS - 0.3)) throw new Error(`Шот ${i + 1}: нет конечного кадра или длительность ${duration}`);
       const qc = await vision(c, [...qcChecks(story(c), i, "end"), `the subject visibly performed: ${story(c).scenes[i]!.action} (compare first image = start, second = end)`], [plan.frames[i].url, end], " (image 1 = shot start, image 2 = shot end)");
       if (!qc.pass && canRetry(c, 0.36)) {
@@ -158,8 +163,27 @@ export async function storyStep(c: Ctx): Promise<boolean> {
       if (m.stats.voiceRmsDb < -35) { await fail(c, "mix", "Голос диктора слишком тихий или отсутствует — сборка остановлена"); return true; }
       const path = `${job.user_id}/${job.id}/mix_r${job.render_attempt}.wav`;
       await c.store.uploadAsset(path, encodeWav16(m.samples, m.rate), "audio/wav");
-      await setPlan(c, { audio_url: await c.store.signAsset(path), mix_path: path, mix_stats: m.stats, speech_duration: SCENES * SCENE_SECONDS }, { stage: "compose_submit" });
+      await setPlan(c, { audio_url: await c.store.signAsset(path), mix_path: path, mix_stats: m.stats, speech_duration: SCENES * SCENE_SECONDS, cur: 0 }, { stage: "shot_scale_submit" });
       await log(c, "mix", `Микс: голос ${m.stats.voiceRmsDb.toFixed(1)} dB, эффекты под голосом ${m.stats.sfxUnderVoiceDb.toFixed(1)} dB, пик ${m.stats.peakDb.toFixed(1)} dBFS`);
+      return true;
+    }
+    // Renderer without fal-ai/ffmpeg-api (denied): each shot → identical 1080×1920 H.264 via permitted
+    // scale-video, then an in-Worker remux joins them with the PCM mix; the shared scale step turns PCM into AAC.
+    case "shot_scale_submit": { const i = cur(c); await submitTask(c, `shotscale${i}`, "fal", FAL.scale, scaleInput(plan.shots[i].url), "shot_scale_wait"); return true; }
+    case "shot_scale_wait": {
+      const i = cur(c), res = await pollTask(c, `shotscale${i}`); if (!res) return true;
+      const shots = setIdx(plan.shots, i, { ...plan.shots[i], scaled_url: providerMedia(res["video"]?.url) });
+      await setPlan(c, { shots, cur: i + 1 < SCENES ? i + 1 : 0 }, { stage: i + 1 < SCENES ? "shot_scale_submit" : "remux" }); return true;
+    }
+    case "remux": {
+      const clips: Uint8Array[] = [];
+      for (const sh of plan.shots as any[]) clips.push(await deps.fetchMedia(sh.scaled_url));
+      const mix = decodeWav(await c.store.downloadAsset(plan.mix_path));
+      const mov = muxClipsWithPcm(clips, { samples: mix.channels[0]!, rate: mix.rate });
+      const path = `${job.user_id}/${job.id}/assembled_r${job.render_attempt}.mov`;
+      await c.store.uploadAsset(path, mov, "video/quicktime");
+      await setPlan(c, { composed_url: await c.store.signAsset(path), assembled_path: path }, { stage: "scale_submit" });
+      await log(c, "remux", `Склейка: ${clips.length} шота + голос, ${(mov.byteLength / 1048576).toFixed(1)} МБ (без перекодирования, в приложении)`, "info", deps.now() - t);
       return true;
     }
   }
