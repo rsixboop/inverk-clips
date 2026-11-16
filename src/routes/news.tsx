@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { pollNewsVoice, submitNewsVoice } from "@/lib/news-voice.functions";
 import { AppShell } from "@/components/studio/AppShell";
 import { CATALOG, findAsset, pickAssets } from "@/lib/news-catalog";
 import { MEDIA_LIBRARY, NEWS_SOURCE, PILOT, pilotValid, totalSeconds, type Shot } from "@/lib/news-pilot";
@@ -32,6 +34,31 @@ function News() {
   const audio = useRef<{ el: HTMLAudioElement; ctx: AudioContext; dest: MediaStreamAudioDestinationNode } | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const els = useRef<(HTMLImageElement | HTMLVideoElement | null)[]>([]);
+  const [tts, setTts] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: "" });
+  const submitFn = useServerFn(submitNewsVoice), pollFn = useServerFn(pollNewsVoice);
+  async function genVoice() {
+    const text = shots.map((s) => s.text).join(" ");
+    let h = 0; for (const c of text) h = (h * 31 + c.charCodeAt(0)) | 0;
+    const key = `news-tts:${h}`;
+    setTts({ busy: true, msg: "" });
+    let id = localStorage.getItem(key);
+    if (id === "pending") { setTts({ busy: false, msg: "Прошлая отправка этого текста завершилась с неизвестным исходом — повтор заблокирован, чтобы не платить дважды. Проверьте fal или измените текст." }); return; }
+    try {
+      if (!id) {
+        localStorage.setItem(key, "pending");
+        try { id = (await submitFn({ data: { text } })).requestId; }
+        catch (e) { if (e instanceof Error && /не настроен|Unauthorized|validation/i.test(e.message)) localStorage.removeItem(key); throw e; }
+        localStorage.setItem(key, id);
+      }
+      for (let i = 0; i < 60; i++) {
+        setTts({ busy: true, msg: `Ожидание fal, запрос ${id}…` });
+        const r = await pollFn({ data: { requestId: id } });
+        if (r.state === "done" && r.url) { setVoice({ url: r.url, name: `fal Kokoro (${id})` }); setTts({ busy: false, msg: `Озвучка готова, запрос ${id}` }); return; }
+        await new Promise((res) => setTimeout(res, 3000));
+      }
+      setTts({ busy: false, msg: `fal ещё не ответил (запрос ${id}). Нажмите снова — будет только проверка, без новой оплаты.` });
+    } catch (e) { setTts({ busy: false, msg: `Ошибка${id && id !== "pending" ? ` (запрос ${id})` : ""}: ${e instanceof Error ? e.message : String(e)}` }); }
+  }
   const ready = allowed && media.every((m) => m?.state === "ok") && pilotValid(shots);
 
   useEffect(() => { els.current = media.map((m) => { if (!m) return null;
@@ -59,7 +86,7 @@ function News() {
   function voiceNode() {
     if (!voice) return null;
     if (!audio.current) {
-      const el = new Audio(); const ctx = new AudioContext(); const src = ctx.createMediaElementSource(el); const dest = ctx.createMediaStreamDestination();
+      const el = new Audio(); el.crossOrigin = "anonymous"; const ctx = new AudioContext(); const src = ctx.createMediaElementSource(el); const dest = ctx.createMediaStreamDestination();
       src.connect(dest); src.connect(ctx.destination); audio.current = { el, ctx, dest };
     }
     if (audio.current.el.src !== voice.url) audio.current.el.src = voice.url;
@@ -119,6 +146,9 @@ function News() {
         <label className="flex gap-2 text-xs"><input type="checkbox" checked={allowed} onChange={(e) => setAllowed(e.target.checked)} />Я подтверждаю, что имею право использовать загруженные материалы (свои файлы или разрешённые официальные медиа Rockstar).</label>
         <div className="space-y-1 text-xs"><b>Озвучка (MP3/WAV)</b> — запишите текст шотов выше по-английски и загрузите файл:
           <input type="file" accept="audio/mpeg,audio/wav,audio/*" className="block text-xs" onChange={(e) => { const f = e.target.files?.[0]; if (f) setVoice({ url: URL.createObjectURL(f), name: f.name }); }} />
+          <button disabled={tts.busy} onClick={genVoice} className="h-7 rounded-md border border-border px-2 disabled:opacity-50">{tts.busy ? "Генерация…" : "Сгенерировать озвучку (~$0.01 fal)"}</button>
+          <div className="text-muted-foreground">Платно: списывается с баланса fal.ai. Повторно не отправляется.</div>
+          {tts.msg && <div className="break-all">{tts.msg}</div>}
           <div className="text-muted-foreground">{voice ? `Загружено: ${voice.name}` : "Озвучка не загружена — экспорт будет без звука."}</div></div>
       </div>
       <div className="panel p-3 space-y-2">
