@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
-import { addUrlSource, saveStoryFeedback, createJob, getOutputUrl, jobAction, pickClip as pickClipFn, selectCandidates } from "@/lib/jobs.functions";
+import { addUrlSource, saveStoryFeedback, setJobBudget, createJob, getOutputUrl, jobAction, pickClip as pickClipFn, selectCandidates } from "@/lib/jobs.functions";
 import { LANGS, MODES, PERMISSIONS, stagesFor } from "@/lib/job-meta";
 import { useEvents, useJobs, useSources, type Job } from "@/hooks/use-jobs";
 import { StatusBadge } from "./AppShell";
@@ -190,6 +190,8 @@ export function JobDetails({ job }: { job: Job }) {
   const pick = useServerFn(pickClipFn);
   const sendFeedback = useServerFn(saveStoryFeedback);
   const [feedback, setFeedback] = useState("");
+  const saveBudget = useServerFn(setJobBudget);
+  const [budget, setBudget] = useState("");
   const [script, setScript] = useState(job.script ?? "");
   const [caption, setCaption] = useState(job.caption ?? "");
   useEffect(() => { setScript(job.script ?? ""); setCaption(job.caption ?? ""); }, [job.id, job.script, job.caption]);
@@ -256,6 +258,14 @@ export function JobDetails({ job }: { job: Job }) {
         })}
       </ol>
 
+        {job.route === "story" && job.workflow_version === 2 && !["succeeded", "cancelled"].includes(job.status) && <div className="space-y-1.5 rounded-md border border-border p-2.5 text-xs">
+          <div className="label-xs">Лимит расходов (USD)</div>
+          <p className="font-mono text-[11px] text-muted-foreground">Потрачено ~${Number(plan.spend_usd ?? 0).toFixed(2)} · текущий лимит ${Number(plan.budget_usd ?? 0).toFixed(2)}</p>
+          <div className="flex gap-1.5">
+            <Input type="number" step="0.5" min={0} max={20} value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="Новый лимит, $" className="h-8 text-xs" />
+            <Button size="sm" variant="outline" disabled={!budget} onClick={async () => { try { const r = await saveBudget({ data: { jobId: job.id, budgetUsd: Number(budget) } }); setBudget(""); toast.success(r.resumed ? "Лимит сохранён, задача продолжается" : "Лимит сохранён"); qc.invalidateQueries({ queryKey: ["jobs"] }); qc.invalidateQueries({ queryKey: ["events"] }); } catch (e) { toast.error((e as Error).message); } }}>Сохранить и продолжить</Button>
+          </div>
+        </div>}
       {job.route === "story" && plan.story_summary && (
         <div className="space-y-1.5 rounded-md border border-border p-2.5 text-xs">
           <div className="label-xs">Сюжет · калибровка {plan.calibration_version}</div>

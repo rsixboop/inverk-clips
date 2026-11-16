@@ -177,3 +177,21 @@ export const saveStoryFeedback = createServerFn({ method: "POST" }).middleware([
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// Raise a story job's spend cap; resumes the same job only when it was blocked by that cap.
+export const setJobBudget = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ jobId: z.string().uuid(), budgetUsd: z.number().finite() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { budgetUpdate } = await import("@/lib/budget");
+    const { data: job } = await context.supabase.from("jobs").select("*").eq("id", data.jobId).eq("user_id", context.userId).maybeSingle();
+    if (!job) throw new Error("Задача не найдена");
+    const { upd, resume, spent } = budgetUpdate(job as any, data.budgetUsd);
+    const now = new Date().toISOString();
+    Object.assign(upd, { updated_at: now }, resume ? { next_attempt_at: now, lock_until: null, lease_token: null, deadline_at: new Date(Date.now() + 3 * 3600e3).toISOString() } : {});
+    const db = await admin();
+    const { data: rows, error } = await db.from("jobs").update(upd as any).eq("id", job.id).eq("user_id", context.userId).eq("updated_at", job.updated_at).select("id");
+    if (error) throw new Error(error.message);
+    if (!rows?.length) throw new Error("Состояние задачи изменилось — обновите и попробуйте снова");
+    await db.from("job_events").insert({ job_id: job.id, user_id: context.userId, stage: job.stage, message: `Лимит расходов: $${(upd["plan"] as any).budget_usd.toFixed(2)} (потрачено ~$${spent.toFixed(2)})${resume ? ` — продолжаю шаг «${upd["stage"]}»` : ""}` });
+    return { ok: true, resumed: resume };
+  });
