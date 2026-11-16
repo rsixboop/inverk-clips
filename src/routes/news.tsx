@@ -27,6 +27,8 @@ function News() {
   const [allowed, setAllowed] = useState(false);
   const [status, setStatus] = useState("");
   const [out, setOut] = useState<{ url: string; ext: string } | null>(null);
+  const [voice, setVoice] = useState<{ url: string; name: string } | null>(null);
+  const audio = useRef<{ el: HTMLAudioElement; ctx: AudioContext; dest: MediaStreamAudioDestinationNode } | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const els = useRef<(HTMLImageElement | HTMLVideoElement | null)[]>([]);
   const ready = allowed && media.every(Boolean) && pilotValid(shots);
@@ -47,16 +49,31 @@ function News() {
     ctx.font = "32px sans-serif"; ctx.fillText("Source: Rockstar Newswire", W / 2, H - 140);
   }
 
+  function voiceNode() {
+    if (!voice) return null;
+    if (!audio.current) {
+      const el = new Audio(); const ctx = new AudioContext(); const src = ctx.createMediaElementSource(el); const dest = ctx.createMediaStreamDestination();
+      src.connect(dest); src.connect(ctx.destination); audio.current = { el, ctx, dest };
+    }
+    if (audio.current.el.src !== voice.url) audio.current.el.src = voice.url;
+    return audio.current;
+  }
+
   async function play(record: boolean) {
     setOut(null);
+    const a = voiceNode();
+    if (a) { await a.ctx.resume(); a.el.currentTime = 0; }
     let rec: MediaRecorder | null = null; const chunks: Blob[] = [];
     let type = "";
     if (record) {
       type = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
       if (!type) { setStatus("Браузер не умеет записывать видео — экспорт недоступен."); return; }
-      rec = new MediaRecorder(canvas.current!.captureStream(30), { mimeType: type, videoBitsPerSecond: 8e6 });
+      const stream = canvas.current!.captureStream(30);
+      if (a) a.dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
+      rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8e6 });
       rec.ondataavailable = (e) => chunks.push(e.data); rec.start();
     }
+    if (a) await a.el.play().catch(() => setStatus("Не удалось воспроизвести озвучку"));
     for (let i = 0; i < shots.length; i++) {
       setStatus(`${record ? "Запись" : "Предпросмотр"}: шот ${i + 1}/4`);
       const el = els.current[i]; if (el instanceof HTMLVideoElement) { el.currentTime = 0; await el.play().catch(() => {}); }
@@ -64,10 +81,12 @@ function News() {
       while (performance.now() < end) { draw(i); await new Promise((r) => requestAnimationFrame(r)); }
       if (el instanceof HTMLVideoElement) el.pause();
     }
+    if (a) a.el.pause();
     if (rec) { await new Promise<void>((r) => { rec!.onstop = () => r(); rec!.stop(); });
       const ext = type.includes("mp4") ? "mp4" : "webm";
       setOut({ url: URL.createObjectURL(new Blob(chunks, { type })), ext });
-      setStatus(ext === "mp4" ? "Готово: MP4 без звука." : "Готово: WebM без звука (этот браузер не записывает MP4).");
+      const snd = a ? "с озвучкой" : "без звука";
+      setStatus(ext === "mp4" ? `Готово: MP4 ${snd}.` : `Готово: WebM ${snd} (этот браузер не записывает MP4).`);
     } else setStatus("Предпросмотр завершён.");
   }
 
@@ -90,15 +109,17 @@ function News() {
           </div>
         ))}
         <label className="flex gap-2 text-xs"><input type="checkbox" checked={allowed} onChange={(e) => setAllowed(e.target.checked)} />Я подтверждаю, что имею право использовать загруженные материалы (свои файлы или разрешённые официальные медиа Rockstar).</label>
-        <div className="text-xs text-muted-foreground">Озвучка: текст шотов выше — это английский сценарий диктора. В экспорт голос не входит (без платных сервисов записать его в браузере нельзя), только текст на экране.</div>
+        <div className="space-y-1 text-xs"><b>Озвучка (MP3/WAV)</b> — запишите текст шотов выше по-английски и загрузите файл:
+          <input type="file" accept="audio/mpeg,audio/wav,audio/*" className="block text-xs" onChange={(e) => { const f = e.target.files?.[0]; if (f) setVoice({ url: URL.createObjectURL(f), name: f.name }); }} />
+          <div className="text-muted-foreground">{voice ? `Загружено: ${voice.name}` : "Озвучка не загружена — экспорт будет без звука."}</div></div>
       </div>
       <div className="panel p-3 space-y-2">
         <canvas ref={canvas} width={W} height={H} className="aspect-[9/16] w-full rounded bg-muted" />
         <button disabled={!media.some(Boolean)} onClick={() => play(false)} className="h-8 w-full rounded-md border border-border text-xs disabled:opacity-50">Предпросмотр раскадровки</button>
-        <button disabled={!ready} onClick={() => play(true)} className="h-8 w-full rounded-md bg-primary text-xs text-primary-foreground disabled:opacity-50">Экспорт видео</button>
+        <button disabled={!ready} onClick={() => play(true)} className="h-8 w-full rounded-md bg-primary text-xs text-primary-foreground disabled:opacity-50">{voice ? "Экспорт видео с озвучкой" : "Экспорт видео (без звука)"}</button>
         {!ready && <p className="text-[11px] text-muted-foreground">Для экспорта: 4 файла, подтверждение прав, 18–23 с.</p>}
         <p className="text-xs">{status}</p>
-        {out && <a href={out.url} download={`gta6-30fps.${out.ext}`} className="block text-xs text-primary underline">Скачать .{out.ext}</a>}
+        {out && <a href={out.url} download={`gta6-30fps${voice ? "" : "-no-sound"}.${out.ext}`} className="block text-xs text-primary underline">Скачать .{out.ext}</a>}
       </div>
     </div>
   );
