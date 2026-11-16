@@ -66,7 +66,7 @@ async function resolveWaitUntil(request: Request, ctx: unknown): Promise<WaitUnt
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
-      // Scheduled job tick: acknowledge at once, keep advancing jobs after the response (waitUntil ~30s).
+      // Scheduled job tick: acknowledge at once, keep advancing jobs after the response (waitUntil ~30s; new stages start only in the first 8s).
       if (request.method === "POST" && new URL(request.url).pathname === "/api/public/jobs/tick") {
         const waitUntil = await resolveWaitUntil(request, ctx);
         if (waitUntil) {
@@ -74,7 +74,7 @@ export default {
         const denied = await authenticateCronRequest(request);
         if (denied) return denied;
         const { drainJobs } = await import("./server/drain.server");
-        waitUntil(drainJobs(25_000).catch((e) => console.error("drain failed", e)));
+        waitUntil(drainJobs(8_000).catch((e) => console.error("drain failed", e)));
         return Response.json({ accepted: true }, { status: 202 });
         }
       }
