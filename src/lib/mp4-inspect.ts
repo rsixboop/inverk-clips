@@ -2,8 +2,8 @@
 // rendered output before we claim success. Pure function, unit-tested with real ffmpeg fixtures.
 export type Mp4Info = { brand: string; video: { codec: string; width: number; height: number } | null; audio: { codec: string } | null; durationS: number | null };
 
-type Box = { type: string; start: number; end: number; body: number };
-function boxes(b: Uint8Array, start: number, end: number): Box[] {
+export type Box = { type: string; start: number; end: number; body: number };
+export function boxes(b: Uint8Array, start: number, end: number): Box[] {
   const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
   const out: Box[] = [];
   let p = start;
@@ -19,7 +19,7 @@ function boxes(b: Uint8Array, start: number, end: number): Box[] {
   }
   return out;
 }
-const child = (b: Uint8Array, parent: Box, type: string) => boxes(b, parent.body, parent.end).find((x) => x.type === type);
+export const child = (b: Uint8Array, parent: Box, type: string) => boxes(b, parent.body, parent.end).find((x) => x.type === type);
 
 export function inspectMp4(b: Uint8Array): Mp4Info {
   const top = boxes(b, 0, b.byteLength);
