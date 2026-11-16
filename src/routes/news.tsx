@@ -13,7 +13,7 @@ export const Route = createFileRoute("/news")({
   component: () => <AppShell>{() => <News />}</AppShell>,
 });
 
-type Media = { url: string; video: boolean; name: string; state: "loading" | "ok" | "error"; err?: string } | null;
+type Media = { url: string; video: boolean; name: string; state: "loading" | "ok" | "error"; err?: string | undefined } | null;
 const W = 1080, H = 1920;
 
 function wrap(ctx: CanvasRenderingContext2D, text: string, max: number) {
