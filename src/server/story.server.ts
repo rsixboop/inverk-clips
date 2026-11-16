@@ -44,7 +44,7 @@ export async function storyStep(c: Ctx): Promise<boolean> {
       const issues: string[] = plan.story_issues ?? [];
       const user = `Language: English narration. Request: ${job.prompt}${plan.feedback?.length ? `\nUser feedback on earlier videos: ${plan.feedback.join(" | ")}` : ""}${issues.length ? `\nYour previous plan failed validation. Fix ALL of these and return a complete plan:\n- ${issues.join("\n- ")}\nPrevious plan: ${JSON.stringify(plan.story_draft).slice(0, 12000)}` : ""}`;
       const sp = normalizePlan(await deps.ai(planInstructions(), user));
-      const found = validatePlan(sp, { allowNeon: /neon/i.test(job.prompt) });
+      const found = validatePlan(sp, { allowNeon: /neon/i.test(job.prompt), prompt: job.prompt });
       const repairs = Number(plan.story_repairs ?? 0);
       if (found.length) {
         if (repairs >= MAX_REPAIRS) { await fail(c, "story_plan", `План не прошёл проверку после ${repairs} исправлений: ${found.slice(0, 4).join(" ")}`); return true; }
