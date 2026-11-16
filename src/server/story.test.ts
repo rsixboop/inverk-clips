@@ -126,7 +126,7 @@ describe("story state machine (fixtures)", () => {
     const d = deps({ falPoll: async () => { throw new ProviderError(humanProviderError("fal.ai", d422), 422, false, false, d422); }, falSubmit: submit });
     await processJob(m.store, d, "j");
     const p = m.row.plan as any;
-    expect(m.row.status).toBe("running"); expect(m.row.stage).toBe("frame_submit"); expect(p.retry).toBe(1); expect(p.compact_prompt).toBe(true);
+    expect([m.row.status, m.row.error]).toEqual(["running", null]); expect(m.row.stage).toBe("frame_submit"); expect(p.retry).toBe(1); expect(p.compact_prompt).toBe(true);
     expect(p.provider_tasks.frame1_r0.state).toBe("failed"); expect(p.provider_errors.at(-1)).toMatchObject({ kind: "no_media", status: 422, types: ["no_media_generated"], fields: ["body"] });
     expect(JSON.stringify(p.provider_errors)).not.toContain("secret-ish");
     m.row.next_attempt_at = new Date(0).toISOString(); await processJob(m.store, d, "j");
