@@ -36,4 +36,14 @@ export const ACTIVE = ["queued", "running"];
 export const MODES = [{ key: "niche", label: "По нише" }, { key: "link", label: "По ссылке" }, { key: "mixed", label: "Смешанный" }] as const;
 export const LANGS = [{ key: "en", label: "English" }, { key: "ru", label: "Русский" }, { key: "uk", label: "Українська" }] as const;
 export const PERMISSIONS = [{ key: "owned", label: "Моё видео" }, { key: "licensed", label: "Лицензия" }, { key: "permitted", label: "Есть разрешение" }, { key: "unknown", label: "Не указано" }] as const;
-export const stagesFor = (route: string) => (route === "clip" ? CLIP_STAGES : STAGES) as readonly { key: string; label: string }[];
+export const STORY_STAGES = [STAGES[0],
+  { key: "story_plan", label: "Сюжет: кандидаты, выбор, проверка плана (держите вкладку открытой ~1–3 мин)" },
+  { key: "voice_submit", label: "Диктор: fal Kokoro" }, { key: "voice_wait", label: "Замер длительности голоса" }, { key: "voice_align", label: "Привязка сцен к голосу" },
+  { key: "frame_submit", label: "Опорные кадры: fal Nano Banana" }, { key: "frame_wait", label: "Проверка кадров (непрерывность)" },
+  { key: "shot_submit", label: "Анимация: fal Kling 2.5 Pro" }, { key: "shot_wait", label: "Ожидание анимации" },
+  { key: "shot_check_submit", label: "Конечный кадр шота" }, { key: "shot_check_wait", label: "Проверка действия" },
+  { key: "sfx_submit", label: "Звуки: fal MMAudio" }, { key: "sfx_wait", label: "Ожидание звуков" },
+  { key: "mix", label: "Микс: голос поверх приглушённых эффектов" },
+  ...STAGES.slice(12),
+] as const;
+export const stagesFor = (route: string) => (route === "clip" ? CLIP_STAGES : route === "story" ? STORY_STAGES : STAGES) as readonly { key: string; label: string }[];

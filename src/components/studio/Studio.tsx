@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
-import { addUrlSource, createJob, getOutputUrl, jobAction, pickClip as pickClipFn, selectCandidates } from "@/lib/jobs.functions";
+import { addUrlSource, saveStoryFeedback, createJob, getOutputUrl, jobAction, pickClip as pickClipFn, selectCandidates } from "@/lib/jobs.functions";
 import { LANGS, MODES, PERMISSIONS, stagesFor } from "@/lib/job-meta";
 import { useEvents, useJobs, useSources, type Job } from "@/hooks/use-jobs";
 import { StatusBadge } from "./AppShell";
@@ -42,7 +42,8 @@ export function Studio({ userId }: { userId: string }) {
   const [audioMode, setAudioMode] = useState<"voiceover" | "original">("voiceover");
   const [review, setReview] = useState(true);
   const [approveSources, setApproveSources] = useState(true);
-  const [route, setRoute] = useState<"clip" | "compose">("clip");
+  const [route, setRoute] = useState<"clip" | "compose" | "story">("clip");
+  const [storyMode, setStoryMode] = useState(false);
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [permission, setPermission] = useState<"owned" | "licensed" | "permitted" | "unknown">("owned");
@@ -77,7 +78,7 @@ export function Studio({ userId }: { userId: string }) {
   async function submit() {
     setBusy("create");
     try {
-      const r = await create({ data: { idempotencyKey: idemKey, mode, prompt, language, targetSeconds: seconds, audioMode, reviewBeforeRender: review, approveSources, route, nicheId: null, sourceId } });
+      const r = await create({ data: { idempotencyKey: idemKey, mode, prompt, language, targetSeconds: seconds, audioMode, reviewBeforeRender: review, approveSources, route: mode !== "link" && storyMode ? "story" : route === "story" ? "clip" : route, nicheId: null, sourceId: storyMode && mode !== "link" ? null : sourceId, ...(storyMode && mode !== "link" ? { language: "en" as const, targetSeconds: 20, audioMode: "voiceover" as const } : {}) } });
       setSelected(r.id); setIdemKey(crypto.randomUUID());
       qc.invalidateQueries({ queryKey: ["jobs"] });
       toast.success(r.duplicate ? "Эта задача уже создана" : "Задача запущена");
@@ -96,6 +97,12 @@ export function Studio({ userId }: { userId: string }) {
           <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} className="resize-none text-sm" />
         </div>
         <div className="space-y-2">
+          {mode !== "link" && (
+            <div className="space-y-1.5">
+              <Seg value={storyMode ? "story" : "footage"} onChange={(v) => setStoryMode(v === "story")} items={[{ key: "footage", label: "Из футажа" }, { key: "story", label: "Сюжет (ИИ-анимация)" }] as const} />
+              {storyMode && <p className="text-[11px] text-muted-foreground">ИИ придумает 3 сюжета, выберет сильнейший, проверит план на противоречия, затем: диктор → кадры → 4 анимированных шота по 5 с → звуки → микс. Около 20 с, английская озвучка, лимит $3 на задачу (fal.ai).</p>}
+            </div>
+          )}
           {mode === "link" && (
             <div className="space-y-1.5">
               <Seg value={route} onChange={setRoute} items={[{ key: "clip", label: "ИИ-нарезка" }, { key: "compose", label: "Сборка" }] as const} />
@@ -181,6 +188,8 @@ export function JobDetails({ job }: { job: Job }) {
   const dl = useServerFn(getOutputUrl);
   const selCands = useServerFn(selectCandidates);
   const pick = useServerFn(pickClipFn);
+  const sendFeedback = useServerFn(saveStoryFeedback);
+  const [feedback, setFeedback] = useState("");
   const [script, setScript] = useState(job.script ?? "");
   const [caption, setCaption] = useState(job.caption ?? "");
   useEffect(() => { setScript(job.script ?? ""); setCaption(job.caption ?? ""); }, [job.id, job.script, job.caption]);
@@ -247,6 +256,21 @@ export function JobDetails({ job }: { job: Job }) {
         })}
       </ol>
 
+      {job.route === "story" && plan.story_summary && (
+        <div className="space-y-1.5 rounded-md border border-border p-2.5 text-xs">
+          <div className="label-xs">Сюжет · калибровка {plan.calibration_version}</div>
+          <p>{plan.story_summary.synopsis}</p>
+          <p><span className="text-muted-foreground">Крючок:</span> {plan.story_summary.hook_promise}</p>
+          <p><span className="text-muted-foreground">Развязка (скрыта до финала):</span> {plan.story_summary.payoff}</p>
+          <p className="text-muted-foreground">Почему выбран: {plan.story_summary.reason}</p>
+          <p className="font-mono text-[11px] text-muted-foreground">Расход ~${Number(plan.spend_usd ?? 0).toFixed(2)} из ${Number(plan.budget_usd ?? 0).toFixed(2)}{plan.mix_stats ? ` · голос ${plan.mix_stats.voiceRmsDb.toFixed(0)} dB / эффекты ${plan.mix_stats.sfxUnderVoiceDb.toFixed(0)} dB` : ""}</p>
+          {[...(plan.frames ?? []), ...(plan.shots ?? [])].some((x: any) => x?.defects?.length) && <p className="text-warning">Замечены дефекты: {[...(plan.frames ?? []), ...(plan.shots ?? [])].flatMap((x: any) => x?.defects ?? []).slice(0, 4).join("; ")}</p>}
+          {job.status === "succeeded" && <div className="flex gap-1.5 pt-1">
+            <Input value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Отзыв для следующих сюжетов" className="h-8 text-xs" />
+            <Button size="sm" variant="outline" disabled={feedback.trim().length < 2} onClick={async () => { try { await sendFeedback({ data: { jobId: job.id, text: feedback } }); setFeedback(""); toast.success("Отзыв учтётся в следующих сюжетах"); } catch (e) { toast.error((e as Error).message); } }}>Отправить</Button>
+          </div>}
+        </div>
+      )}
       {job.plan && (
         <div className="space-y-2">
           <div className="label-xs">{job.route === "clip" ? "Транскрипт клипа" : "Сценарий озвучки"}</div>

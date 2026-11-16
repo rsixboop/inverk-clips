@@ -7,6 +7,7 @@ import { falConfigured } from "@/lib/providers/fal";
 import { atlasConfigured } from "@/lib/providers/atlas";
 import { tavilyConfigured } from "@/lib/providers/tavily";
 
+import { STORY_BUDGET_USD, STORY_CALIBRATION } from "@/server/story-plan";
 import { classifyUrl, inspectDirectVideo, parsePublicUrl } from "@/lib/url-guard";
 
 function origin() {
@@ -33,16 +34,23 @@ export const providerStatus = createServerFn({ method: "GET" }).middleware([requ
 const createSchema = z.object({
   idempotencyKey: z.string().min(8).max(64), mode: z.enum(["niche", "link", "mixed"]), prompt: z.string().max(2000),
   language: z.enum(["en", "ru", "uk"]), targetSeconds: z.number().int().min(10).max(90), audioMode: z.enum(["voiceover", "original"]),
-  reviewBeforeRender: z.boolean(), approveSources: z.boolean(), route: z.enum(["compose", "clip"]), nicheId: z.string().uuid().nullable(), sourceId: z.string().uuid().nullable(),
+  reviewBeforeRender: z.boolean(), approveSources: z.boolean(), route: z.enum(["compose", "clip", "story"]), nicheId: z.string().uuid().nullable(), sourceId: z.string().uuid().nullable(),
 });
 export const createJob = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((d: unknown) => createSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { data: existing } = await context.supabase.from("jobs").select("id").eq("idempotency_key", data.idempotencyKey).maybeSingle();
     if (existing) return { id: existing.id, duplicate: true };
+    const story = data.mode !== "link" && data.route === "story";
+    let feedback: string[] = [];
+    if (story) {
+      const { data: fb } = await context.supabase.from("provider_configs").select("settings").eq("user_id", context.userId).eq("provider", "story_feedback").maybeSingle();
+      feedback = (((fb?.settings as any)?.notes ?? []) as any[]).slice(-5).map((n) => `[${n.calibration_version}] ${n.text}`);
+    }
     const { data: row, error } = await (await admin()).from("jobs").insert({
       workflow_version: 2,
       user_id: context.userId, idempotency_key: data.idempotencyKey, mode: data.mode, prompt: data.prompt, language: data.language,
-      target_seconds: data.targetSeconds, audio_mode: data.audioMode, review_before_render: data.reviewBeforeRender, approve_sources: data.approveSources, route: data.mode === "link" ? data.route : "compose", niche_id: data.nicheId, source_id: data.sourceId,
+      target_seconds: data.targetSeconds, audio_mode: data.audioMode, review_before_render: data.reviewBeforeRender, approve_sources: data.approveSources, route: data.mode === "link" ? (data.route === "story" ? "clip" : data.route) : story ? "story" : "compose", niche_id: data.nicheId, source_id: data.sourceId,
+      ...(story ? { plan: { budget_usd: STORY_BUDGET_USD, spend_usd: 0, feedback } as any, audio_mode: "voiceover", source_id: null } : {}),
     }).select("id").single();
     if (error) {
       if (error.code === "23505") {
@@ -61,6 +69,7 @@ export const jobAction = createServerFn({ method: "POST" }).middleware([requireS
     const { data: job } = await context.supabase.from("jobs").select("*").eq("id", data.jobId).eq("user_id", context.userId).maybeSingle();
     if (!job) throw new Error("Задача не найдена");
     if (job.workflow_version !== 2 && data.action !== "cancel") throw new Error("Задача старого провайдера: файлы сохранены. Создайте новую задачу; платный повтор отключён.");
+    if (job.route === "story" && ["regenerate", "rerender"].includes(data.action)) throw new Error("Для сюжетного ролика создайте новую задачу — повторная генерация всех сцен оплачивается заново");
     const now = new Date().toISOString();
     const deadline = new Date(Date.now() + 3 * 3600e3).toISOString();
     // clearing lease_token fences out any in-flight worker: its later writes match 0 rows and are discarded
@@ -151,4 +160,20 @@ export const addUrlSource = createServerFn({ method: "POST" }).middleware([requi
     const { data: row, error } = await (await admin()).from("sources").insert({ user_id: context.userId, kind, url, title: u.hostname + u.pathname.slice(0, 60), mime, bytes, permission: data.permission, permission_note: data.note, status, status_note }).select("*").single();
     if (error) throw new Error(error.message);
     return row;
+  });
+
+// Viewer feedback on a story video, tagged with the calibration version, fed into the next story plans.
+export const saveStoryFeedback = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ jobId: z.string().uuid(), text: z.string().min(2).max(1000) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: job } = await context.supabase.from("jobs").select("id,plan").eq("id", data.jobId).eq("user_id", context.userId).maybeSingle();
+    if (!job) throw new Error("Задача не найдена");
+    const note = { job_id: job.id, calibration_version: (job.plan as any)?.calibration_version ?? STORY_CALIBRATION.version, text: data.text, at: new Date().toISOString() };
+    const { data: cur } = await context.supabase.from("provider_configs").select("id,settings").eq("user_id", context.userId).eq("provider", "story_feedback").maybeSingle();
+    const notes = [...(((cur?.settings as any)?.notes ?? []) as any[]), note].slice(-30);
+    const { error } = cur
+      ? await context.supabase.from("provider_configs").update({ settings: { notes } as any, updated_at: note.at }).eq("id", cur.id)
+      : await context.supabase.from("provider_configs").insert({ user_id: context.userId, provider: "story_feedback", settings: { notes } as any });
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
