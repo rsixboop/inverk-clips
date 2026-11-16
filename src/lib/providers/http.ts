@@ -1,4 +1,4 @@
-export type ProviderErrorKind = "validation" | "no_media" | "auth" | "credits" | "rate_limit" | "network" | "server" | "other";
+export type ProviderErrorKind = "validation" | "no_media" | "forbidden" | "auth" | "credits" | "rate_limit" | "network" | "server" | "other";
 /** Sanitized provider error detail: type/msg/loc only — never request inputs, headers or keys. */
 export type ProviderDetail = { kind: ProviderErrorKind; status: number; types: string[]; messages: string[]; fields: string[] };
 export class ProviderError extends Error {
@@ -18,6 +18,7 @@ export function classifyProviderError(status: number, text: string): ProviderDet
   const kind: ProviderErrorKind =
     types.includes("no_media_generated") ? "no_media"
     : status === 402 || (status === 403 && /balance|credit|locked|exhausted|billing/i.test(all)) ? "credits"
+    : status === 403 && /permission|access denied|not_priced|not available|forbidden/i.test(all) ? "forbidden"
     : status === 401 || status === 403 ? "auth"
     : status === 429 ? "rate_limit"
     : status === 422 || status === 400 ? "validation"
@@ -29,6 +30,7 @@ export function humanProviderError(name: string, d: ProviderDetail) {
   switch (d.kind) {
     case "no_media": return `${name}: модель не создала результат для этого запроса (no_media_generated, ${d.status}) — это не баланс; нужен изменённый запрос.`;
     case "credits": return `${name}: недостаточно средств на балансе — пополните счёт провайдера. Задача остановлена без повторов.`;
+    case "forbidden": return `${name}: нет доступа к этому эндпоинту (403) — ключ рабочий, но аккаунту провайдера этот инструмент недоступен. Нужен доступ у провайдера или другой разрешённый инструмент; повтор не поможет.`;
     case "auth": return `${name}: ключ доступа отклонён (${d.status}). Проверьте ключ в настройках.`;
     case "rate_limit": return `${name}: слишком много запросов (429), повторю позже.`;
     case "validation": return `${name}: провайдер отклонил параметры запроса (${d.status}${d.fields.length ? `, поле ${d.fields.join(", ")}` : ""}).${why}`;
