@@ -188,6 +188,34 @@ describe("REGRESSION 50e227d5 (2): fal-ai/ffmpeg-api 403 on metadata → permitt
     expect(p.provider_tasks.shot0_r0.id).toBe("kling0"); expect(p.provider_tasks.frame0_r0.id).toBe("f0");
     expect(submit).toHaveBeenCalledTimes(1);
   });
+  it("REGRESSION 50e227d5 (3): retry at shot_check_wait with only a legacy shotmeta task returns to submit; done tasks reused", async () => {
+    const m = mem(midJob({ retry: 1, provider_tasks: { ...midJob().plan.provider_tasks, shot0_r1: { provider: "fal", model: FAL.i2v, state: "done", id: "kling1", result: {} }, shotmeta0_r1: { provider: "fal", model: FAL.metadata, state: "submitted", id: "old-meta" } } }));
+    m.row.stage = "shot_check_wait";
+    const submit = vi.fn(async () => "frames-r1");
+    const d = deps({ falSubmit: submit as any, falCapabilities: ok });
+    await processJob(m.store, d, "j");
+    expect(submit).not.toHaveBeenCalled(); expect(m.row.status).toBe("running"); expect(m.row.stage).toBe("shot_check_submit");
+    m.row.next_attempt_at = new Date(0).toISOString(); await processJob(m.store, d, "j");
+    const p = m.row.plan as any;
+    expect(submit).toHaveBeenCalledTimes(1); expect((submit.mock.calls[0] as any)[0]).toBe(FAL.frames);
+    expect(p.provider_tasks.shotframes0_r1.id).toBe("frames-r1"); expect(m.row.stage).toBe("shot_check_wait");
+    expect(p.provider_tasks.shot0_r1.id).toBe("kling1"); expect(p.provider_tasks.shotmeta0_r1.id).toBe("old-meta"); expect(p.provider_tasks.frame0_r0.id).toBe("f0");
+  });
+  it("wait stage with an existing submitted ID polls it instead of resubmitting", async () => {
+    const m = mem(midJob({ provider_tasks: { ...midJob().plan.provider_tasks, shotframes0_r0: { provider: "fal", model: FAL.frames, state: "submitted", id: "fr0", submitted_at: Date.now() } } }));
+    m.row.stage = "shot_check_wait";
+    const submit = vi.fn(async () => "x"), poll = vi.fn(async () => ({ state: "processing" }));
+    await processJob(m.store, deps({ falSubmit: submit as any, falPoll: poll as any, falCapabilities: ok }), "j");
+    expect(submit).not.toHaveBeenCalled(); expect(poll).toHaveBeenCalledWith(FAL.frames, "fr0"); expect(m.row.stage).toBe("shot_check_wait");
+  });
+  it("wait stage with a 'submitting' task of unknown outcome fails without auto-resubmit", async () => {
+    const m = mem(midJob({ provider_tasks: { ...midJob().plan.provider_tasks, shotframes0_r0: { provider: "fal", model: FAL.frames, state: "submitting", submitted_at: Date.now() } } }));
+    m.row.stage = "shot_check_wait";
+    const submit = vi.fn(async () => "x");
+    await processJob(m.store, deps({ falSubmit: submit as any, falCapabilities: ok }), "j");
+    expect(submit).not.toHaveBeenCalled(); expect(m.row.status).toBe("failed"); expect(m.row.error).toMatch(/Неизвестный исход/);
+    expect((m.row.plan as any).provider_tasks.shotframes0_r0.state).toBe("submitting");
+  });
   it("preflight blocks before a paid call when a downstream renderer endpoint is denied", async () => {
     const m = mem(midJob()); m.row.stage = "shot_submit"; (m.row.plan as any).cur = 1;
     const submit = vi.fn(async () => "x");
