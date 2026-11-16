@@ -18,7 +18,7 @@ export const pollNewsVoice = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const r = await falPoll(FAL.tts, data.requestId);
     if (r.state !== "done") return { state: "processing" as const, url: null };
-    const url = providerMedia(r.result);
+    const url = providerMedia(r.result["audio"]?.url);
     if (!/^https:\/\/[^/]*fal\.media\//.test(url)) throw new Error("fal вернул неожиданный адрес аудио");
     return { state: "done" as const, url };
   });
