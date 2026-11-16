@@ -7,3 +7,5 @@
 - [x] Verify queue adapters, content-aware selection, vertical composition and captions with regression fixtures
 - [x] Deliver one 16s original stylized gaming meme under the existing owner's account; fal tariff estimate $0.018, supervised motion-render import
 - [x] Verify real 1080×1920 H.264/AAC MP4, authenticated Library playback and download; desktop/mobile checked
+- [x] Story route: autonomous plan/validate, narrator-first, QC'd frames/shots, ducked mix, spend cap, background drain
+- [ ] Review first automatic story video and tune calibration from feedback (waiting on user review)
