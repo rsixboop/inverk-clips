@@ -7,12 +7,14 @@ export const STORY_BUDGET_USD = 3;
 
 /** Persisted user calibration. Bump `version` whenever rules change so feedback maps to a version. */
 export const STORY_CALIBRATION = {
-  version: "story-v1-2026-11-16",
+  version: "story-v2-2026-11-16",
   look: "GTA V gameplay screenshot look: third-person game camera, ordinary midday daylight, hard realistic shadows, game-engine materials, realistic adult proportions, Los Santos streets with palms and power lines",
   avoid: "glossy cinematic grading, neon, golden-hour gloss, toy/diorama/Pixar look, on-screen text, captions, watermarks, AI or 'inspired' labels, logos made up as text",
   allowed: "recognizable GTA V franchise elements (Los Santos, LSPD cruisers, Franklin-like protagonist, in-game vehicle styles) — always generated, never claimed as real game footage or textures",
   learned: [
     "Prior calibration (job a9f5a49a 'The garage was a mistake'): a clear cause→consequence story with a delayed payoff worked; narrator must be loud and dominant.",
+    "User preferences: GTA V gameplay look with recognizable franchise elements; English narration; a meaningful causal hook and payoff; never burn an 'inspired'/AI label into the video.",
+    "Rejected concepts: generic pigeon, fries/food-chase or shopping-cart gags and childish characters — never use them unless the request explicitly asks.",
     "Defects to prevent: hero car gaining a police light bar, door shown open after it closed, car changing model between shots, static shots with no subject motion.",
   ],
 } as const;
@@ -124,8 +126,10 @@ export function anchorText(p: StoryPlan) {
 }
 const stateText = (s: State) => Object.entries(s).map(([k, v]) => `${k}: ${v}`).join(", ");
 
-export function framePrompt(p: StoryPlan, i: number, first: boolean) {
+export function framePrompt(p: StoryPlan, i: number, first: boolean, compact = false) {
   const s = p.scenes[i]!;
+  // Compact form after a no-output refusal: short, non-repetitive, no long anchor/negative lists.
+  if (compact) return `Same person, outfit, vehicle and street as the reference image, new moment. ${s.where}. ${stateText(s.start_state)}. ${s.camera}. Third-person video game screenshot, ordinary daylight, vertical 9:16.`;
   const keep = first ? "" : "Keep EXACTLY the same person, outfit, vehicle model/colour/roof and location as the reference image. ";
   return `${keep}${STORY_CALIBRATION.look}. Vertical 9:16 frame. ${s.where}. Shows: ${s.who.map((w) => p.anchors[w]?.description ?? w).join("; ")}. Situation at the start of the shot: ${stateText(s.start_state)}. ${s.props ? "Props: " + s.props + ". " : ""}Camera: ${s.camera}. No text, no captions, no watermark, no labels.`;
 }
