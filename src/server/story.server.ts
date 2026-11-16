@@ -58,9 +58,8 @@ export async function storyStep(c: Ctx): Promise<boolean> {
       const duration = wavDuration(await deps.fetchMedia(url));
       if (!(duration > 0.3)) { await fail(c, "voice_wait", `Озвучка строки ${i + 1} пустая — тихий голос не принимается`); return true; }
       const voices = setIdx(plan.voices, i, { url, duration, speed, text: story(c).scenes[i]!.narration });
-      const next = voices.findIndex((v, k) => k < SCENES && !v);
-      await setPlan(c, { voices, cur: next >= 0 ? next : i + 1 }, { stage: next >= 0 || i + 1 < SCENES ? "voice_submit" : "voice_align" });
-      if (next < 0 && i + 1 < SCENES) await setPlan(c, { cur: i + 1 });
+      let next = -1; for (let k = 0; k < SCENES; k++) if (!voices[k]) { next = k; break; }
+      await setPlan(c, { voices, cur: Math.max(0, next) }, { stage: next >= 0 ? "voice_submit" : "voice_align" });
       return true;
     }
     case "voice_align": {
@@ -99,7 +98,8 @@ export async function storyStep(c: Ctx): Promise<boolean> {
       }
       const frames = setIdx(plan.frames, i, { url, qc, retries: r, defects: qc.checks.filter((x) => !x.pass).map((x) => x.item) });
       await setPlan(c, { frames, cur: i + 1 < SCENES ? i + 1 : 0, retry: 0, frame_fix: null }, { stage: i + 1 < SCENES ? "frame_submit" : "shot_submit" });
-      return void (await log(c, "frame_wait", `Кадр ${i + 1}: ${qc.pass ? "проверка пройдена" : "принят с дефектами: " + frames[i].defects.join(", ")}`, qc.pass ? "info" : "warn")) ?? true;
+      await log(c, "frame_wait", `Кадр ${i + 1}: ${qc.pass ? "проверка пройдена" : "принят с дефектами: " + frames[i].defects.join(", ")}`, qc.pass ? "info" : "warn");
+      return true;
     }
     case "shot_submit": {
       const i = cur(c), r = retry(c), sp = story(c), emph = r ? ` The main subject must clearly perform the action: ${sp.scenes[i]!.action}.` : "";
@@ -110,7 +110,7 @@ export async function storyStep(c: Ctx): Promise<boolean> {
       const i = cur(c), r = retry(c), res = await pollTask(c, `shot${i}_r${r}`); if (!res) return true;
       await setPlan(c, { shot_candidate: providerMedia(res["video"]?.url) }, { stage: "shot_check_submit" }); return true;
     }
-    case "shot_check_submit": return void (await submitTask(c, `shotmeta${cur(c)}_r${retry(c)}`, "fal", FAL.metadata, { media_url: plan.shot_candidate, extract_frames: true }, "shot_check_wait")) ?? true;
+    case "shot_check_submit": await submitTask(c, `shotmeta${cur(c)}_r${retry(c)}`, "fal", FAL.metadata, { media_url: plan.shot_candidate, extract_frames: true }, "shot_check_wait"); return true;
     case "shot_check_wait": {
       const i = cur(c), r = retry(c), res = await pollTask(c, `shotmeta${i}_r${r}`); if (!res) return true;
       const m = res["media"] ?? {}, end = typeof m.end_frame_url === "string" ? providerMedia(m.end_frame_url) : null;
