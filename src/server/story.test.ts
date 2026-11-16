@@ -73,7 +73,7 @@ describe("story state machine (fixtures)", () => {
       async update(_j, t, p) { if (row.lease_token !== t || !["queued", "running"].includes(row.status)) return false; Object.assign(row, p); return true; },
       async release(_i, t) { if (row.lease_token === t) { row.lease_token = null; row.lock_until = null; } },
       async recordOrphan() {}, async log() {}, async getSource() { return null; }, async library() { return []; }, async setSourceDuration() {},
-      async signFootage() { return ""; }, async uploadOutput() {}, async removeOutput() {}, async uploadAsset() {}, async signAsset(p) { return "https://s/" + p; },
+      async signFootage() { return ""; }, async uploadOutput() {}, async removeOutput() {}, async uploadAsset(p: string) { uploads.push(p); }, async signAsset(p) { return "https://s/" + p; }, async downloadAsset() { return wavAsset; },
     };
     return { row, store };
   }
