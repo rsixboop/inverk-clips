@@ -151,7 +151,7 @@ describe("story state machine (fixtures)", () => {
 });
 
 describe("REGRESSION 50e227d5 (2): fal-ai/ffmpeg-api 403 on metadata → permitted renderer, completed assets reused", () => {
-  const fx = (n: string) => new Uint8Array(readFileSync(new URL(`../test/fixtures/${n}`, import.meta.url)));
+  const fx = (n: string) => new Uint8Array(readFileSync(`src/test/fixtures/${n}`));
   const ok = (models: string[]) => Promise.resolve(models.map((model) => ({ model, ok: true, status: 422, reason: "доступен" })));
   function midJob(extra: any = {}) {
     return { stage: "shot_check_submit", next_attempt_at: new Date(0).toISOString(), plan: { budget_usd: STORY_BUDGET_USD, spend_usd: 0.715, story: normalizePlan(good()), cur: 0, retry: 0,
