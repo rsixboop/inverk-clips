@@ -20,20 +20,18 @@ LINES = [
  "GTA Six unlocks November nineteenth, at midnight local time.",
  "So be honest. What game are you deleting to make room?"
 ]
-CAPS = [
- ["UP TO", "212 GB"],
- ["ROCKSTAR", "CONFIRMED"],
- ["PRELOAD", "IS LIVE"],
- ["NOT", "EARLY ACCESS"],
- ["NOV 19", "MIDNIGHT"],
- ["WHAT ARE YOU", "DELETING?"]
-]
-# Two editorial shots for each spoken line, each with distinct official art.
+# Visual story beats, not subtitles that spoil the next spoken idea.
+# Every background is chosen for the topic; explanatory UI appears at the moment
+# it is discussed. Variable cut points keep the montage from feeling mechanical.
 IMGS = [
- ["vc16","vc04"], ["vc14","jl13"], ["vc02","vc11"],
- ["jl06","vc07"], ["vc20","lk01"], ["jl13","vc01"]
+ ["vc16", "vc14", "vc04"],  # storage space
+ ["vc11", "jl06"],          # Rockstar's statement
+ ["vc02", "vc07", "vc01"],  # downloading
+ ["jl13", "vc20"],          # early download is NOT early access
+ ["vc11", "lk01", "vc04"],  # date/release
+ ["vc02", "vc16"],          # game-library deletion
 ]
-LIVE = {1: "c-jason", 5: "c-lucia"} # only brief game-character atmosphere, not evidence.
+CUTS = [[0.28,0.68],[0.47],[0.29,0.69],[0.56],[0.36,0.73],[0.48]]
 LIME=(197,244,65); WHITE=(246,246,241)
 FONTFILE = subprocess.run(["fc-match","-f","%{file}","DejaVu Sans:style=Bold"],text=True,capture_output=True,check=True).stdout.strip()
 def font(sz): return ImageFont.truetype(FONTFILE,sz)
