@@ -162,7 +162,7 @@ def supporting_frames(seg, n):
 def main():
     enc = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
         "-i", P["voice"]["file"], "-filter_complex", f"[1:a]atrim=0:{O['end']},afade=t=out:st={O['end']-0.25}:d=0.25,loudnorm={P['voice']['loudnorm']},aresample=48000[a]",
-        "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-preset", "medium", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-t", str(O["end"]), O["file"]], stdin=subprocess.PIPE)
+        "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-preset", "medium", "-crf", "27", "-maxrate", "2600k", "-bufsize", "3900k", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-t", str(O["end"]), O["file"]], stdin=subprocess.PIPE)
     total = 0
     for seg in P["segments"]:
         a = round(seg["t"][0] * FPS); b = round(seg["t"][1] * FPS); n = b - a; assert a == total, f"gap at {seg['t']}"
