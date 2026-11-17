@@ -9,7 +9,7 @@ export const submitNewsVoice = createServerFn({ method: "POST" })
   .inputValidator((d) => z.object({ text: z.string().min(10).max(1200) }).parse(d))
   .handler(async ({ data }) => {
     if (!falConfigured()) throw new Error("FAL_KEY не настроен");
-    return { requestId: await falSubmit(FAL.tts, { prompt: data.text, voice: "am_michael", speed: 1 }) };
+    return { requestId: await falSubmit(FAL.tts, { prompt: data.text, voice: "am_fenrir", speed: 1 }) };
   });
 
 export const pollNewsVoice = createServerFn({ method: "POST" })
