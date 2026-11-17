@@ -10,14 +10,18 @@ F = lambda s: ImageFont.truetype(FONT, s)
 LIME, WHITE, BG = (190, 242, 62), (255, 255, 255), (22, 24, 26)
 CACHE = "/tmp/news-render-src"; os.makedirs(CACHE, exist_ok=True)
 
-def clip_frames(name, n):
+def clip_frames(name, n, allow_partial=False):
     cx = P.get("crop_x", {}).get(name, 0.5)
     local_path = f"public/gta6-media/c-{name}.mp4"
     path = local_path if os.path.exists(local_path) else f"{CACHE}/{name}.mp4"
     if not os.path.exists(path): urllib.request.urlretrieve(P["clip_sources"][name], path)
     fr = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v", "-count_frames", "-show_entries", "stream=nb_read_frames,r_frame_rate", "-of", "csv=p=0", path], capture_output=True, text=True).stdout.strip().split(",")
     assert fr[0] == f"{FPS}/1", f"{name}: source fps {fr[0]} != {FPS} (would need resampling)"
-    assert n <= int(fr[1]), f"{name}: insert {n} frames > source {fr[1]} — refuse to slow down or loop"
+    available = int(fr[1])
+    if allow_partial:
+        n = min(n, available)
+    else:
+        assert n <= available, f"{name}: insert {n} frames > source {fr[1]} — refuse to slow down or loop"
     raw = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}:(iw-{W})*{cx}:(ih-{H})/2", "-frames:v", str(n), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True).stdout
     sz = W * H * 3; return [Image.frombytes("RGB", (W, H), raw[i*sz:(i+1)*sz]) for i in range(n)]
 
@@ -210,11 +214,13 @@ def main():
             frames = []
             if seg.get("clip"):
                 try:
-                    frames = clip_frames(seg["clip"], n)
+                    frames = clip_frames(seg["clip"], n, allow_partial=True)
+                    if len(frames) < n:
+                        print(f"cinematic {seg['clip']}: {len(frames)}/{n} native frames, animated photo for remaining {n-len(frames)}", file=sys.stderr)
                 except (AssertionError, OSError, ValueError) as e:
                     print(f"cinematic clip {seg['clip']} unavailable ({e}); official still fallback", file=sys.stderr)
             for k in range(n):
-                enc.stdin.write(cinema_frame(seg, k, n, frames[k] if frames else None).tobytes())
+                enc.stdin.write(cinema_frame(seg, k, n, frames[k] if k < len(frames) else None).tobytes())
         elif seg["kind"] == "beat":
             underlays = supporting_frames(seg, n)
             for k in range(n):
