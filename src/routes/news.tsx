@@ -231,23 +231,9 @@ function News() {
           <video controls playsInline preload="metadata" src="/gta6_cloud_editorial.mp4" className="w-full rounded bg-muted" />
           <a href="/gta6_cloud_editorial.mp4" download="gta6_cloud_editorial.mp4" className="block text-xs text-primary underline">Скачать редакторский монтаж .mp4</a>
         </div>
-        <div className="rounded-md border border-border p-2 space-y-1">
-          <b className="text-xs">Новый монтаж · GTA VI / Xbox Cloud (V4)</b>
-          <video controls playsInline preload="metadata" src="/gta6_cloud_v4.mp4" className="w-full rounded bg-muted" />
-          <a href="/gta6_cloud_v4.mp4" download="gta6_cloud_v4.mp4" className="block text-xs text-primary underline">Скачать V4 .mp4 (14 равномерных сцен)</a>
-        </div>
-        <div className="rounded-md border border-border p-2 space-y-1">
-          <b className="text-xs">Новый тест · GTA VI / Xbox Cloud (V3)</b>
-          <video controls playsInline preload="metadata" src="/gta6_cloud_v3.mp4" className="w-full rounded bg-muted" />
-          <a href="/gta6_cloud_v3.mp4" download="gta6_cloud_v3.mp4" className="block text-xs text-primary underline">Скачать V3 .mp4 (22 с, 720×1280)</a>
-        </div>
-        <div className="rounded-md border border-border p-2 space-y-1">
-          <b className="text-xs">Предыдущий тест · GTA VI / Xbox Cloud (V2)</b>
-          <video controls playsInline preload="metadata" src="/gta6_cloud_v2.mp4" className="w-full rounded bg-muted" />
-          <a href="/gta6_cloud_v2.mp4" download="gta6_cloud_v2.mp4" className="block text-xs text-primary underline">Скачать .mp4 (22 с, 720×1280)</a>
-        </div>
+        <p className="text-[11px] text-muted-foreground">Для сравнения: <a href="/gta6_cloud_v2.mp4" target="_blank" rel="noreferrer" className="underline">V2</a> · <a href="/gta6_cloud_v3.mp4" target="_blank" rel="noreferrer" className="underline">V3</a> · <a href="/gta6_cloud_v4.mp4" target="_blank" rel="noreferrer" className="underline">V4</a></p>
         <canvas ref={canvas} width={W} height={H} className="aspect-[9/16] w-full rounded bg-muted" />
-        <p className="text-[11px] text-muted-foreground">Новый ритм: смена ракурса каждые ~1,5–2,3 с, без ускорения видео. Проверяется кнопкой предпросмотра ниже; V2 выше сохранён для сравнения.</p>
+        <p className="text-[11px] text-muted-foreground">Ниже — отдельный редактор раскадровки. Готовый ролик находится выше.</p>
         <button disabled={busy || !media.some(Boolean)} onClick={() => play(false)} className="h-8 w-full rounded-md border border-border text-xs disabled:opacity-50">Предпросмотр раскадровки</button>
         <button disabled={!ready} onClick={() => play(true)} className="h-8 w-full rounded-md bg-primary text-xs text-primary-foreground disabled:opacity-50">{voice ? "Экспорт видео с озвучкой" : "Экспорт видео (без звука)"}</button>
         {!ready && <p className="text-[11px] text-muted-foreground">Для экспорта: все 4 медиа загружены, подтверждение прав, 18–23 с.</p>}
