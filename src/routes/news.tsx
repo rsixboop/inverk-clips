@@ -105,11 +105,18 @@ function News() {
     ctx.fillStyle = "#111"; ctx.fillRect(0, 0, W, H);
     if (el) { const sw = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth, sh = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
       if (sw && sh) { const s = Math.max(W / sw, H / sh) * (1.045 + (cut % 3) * 0.027 + 0.035 * progress); const dx = (W - sw * s) / 2 + (cut % 2 ? 1 : -1) * (progress - 0.5) * 22; ctx.drawImage(el, dx, (H - sh * s) / 2, sw * s, sh * s); } }
-    ctx.font = "bold 64px sans-serif"; ctx.textAlign = "center";
-    const lines = wrap(ctx, shots[i]!.caption || shots[i]!.text, W - 160), y0 = H - 520;
-    ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(60, y0 - 80, W - 120, lines.length * 80 + 60);
-    ctx.fillStyle = "#fff"; lines.forEach((l, k) => ctx.fillText(l, W / 2, y0 + k * 80));
-    ctx.font = "32px sans-serif"; ctx.fillText("Source: Rockstar Newswire", W / 2, H - 140);
+    const label = shots[i]!.caption?.trim();
+    if (label) {
+      ctx.font = "bold 64px sans-serif"; ctx.textAlign = "center";
+      const lines = wrap(ctx, label, W - 160), y0 = H - 520;
+      ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(60, y0 - 80, W - 120, lines.length * 80 + 60);
+      ctx.fillStyle = "#fff"; lines.forEach((l, k) => ctx.fillText(l, W / 2, y0 + k * 80));
+    }
+    // A source attribution belongs on evidence frames only, not on every cut.
+    if (shots[i]!.role === "evidence") {
+      ctx.textAlign = "center"; ctx.font = "32px sans-serif"; ctx.fillStyle = "#fff";
+      ctx.fillText("Source: Rockstar Newswire", W / 2, H - 140);
+    }
   }
 
   function voiceNode() {
@@ -205,7 +212,7 @@ function News() {
             <div className="flex items-center gap-2"><b>Шот {i + 1}</b>
               <input type="number" min={2} max={10} step={0.5} value={s.seconds} onChange={(e) => upd(i, { seconds: Number(e.target.value) })} className="h-7 w-16 rounded border border-input bg-muted px-1 text-xs" /> с</div>
             <textarea value={s.text} onChange={(e) => upd(i, { text: e.target.value })} rows={2} className="w-full rounded border border-input bg-muted p-2 text-xs" />
-            <input value={s.caption ?? ""} placeholder="Экранная подпись (пусто = текст озвучки)" onChange={(e) => upd(i, { caption: e.target.value })} className="w-full rounded border border-input bg-muted p-1 text-xs" />
+            <input value={s.caption ?? ""} placeholder="Экранная подпись (пусто = без заголовка)" onChange={(e) => upd(i, { caption: e.target.value })} className="w-full rounded border border-input bg-muted p-1 text-xs" />
             <div className="text-xs text-muted-foreground">Материал: {s.material}</div>
             {s.brief && <div className="text-xs text-muted-foreground">Визуал: {s.brief} · <b>{s.role === "evidence" ? "доказательство" : "иллюстрация (не доказательство)"}</b></div>}
             <input type="file" accept="video/mp4,image/*" className="text-xs" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return;
