@@ -71,3 +71,11 @@ describe("safe provider failures and research (fixtures)", () => {
     await tavilySearch("GTA"); expect((f.mock.calls[0] as any)[1].headers.Authorization).toBe("Bearer fixture-only");
   });
 });
+import { pickExtract } from "./tavily";
+describe("tavily extract", () => {
+  it("uses raw_content of the exact URL only", () => {
+    const j = { results: [{ url: "https://x.com/other", raw_content: "nope" }, { url: "https://www.rockstargames.com/newswire/article/a/", raw_content: " body " }] };
+    expect(pickExtract(j, "https://www.rockstargames.com/newswire/article/a")).toBe("body");
+    expect(() => pickExtract({ results: [{ url: "https://x.com/other", raw_content: "nope" }] }, "https://www.rockstargames.com/newswire/article/a")).toThrow(/не вернул/);
+  });
+});

@@ -17,3 +17,21 @@ export async function tavilySearch(query: string, max = 6, opts: { days?: number
   });
   return parseTavily(j);
 }
+
+// Tavily Extract — https://docs.tavily.com/documentation/api-reference/endpoint/extract. Returns raw_content of the exact URL only.
+export const sameUrl = (a: string, b: string) => a.trim().replace(/\/+$/, "") === b.trim().replace(/\/+$/, "");
+export function pickExtract(j: any, url: string, max = 200_000): string {
+  const r = (Array.isArray(j?.results) ? j.results : []).find((x: any) => typeof x?.url === "string" && sameUrl(x.url, url));
+  const t = typeof r?.raw_content === "string" ? r.raw_content.trim() : "";
+  if (!t) throw new ProviderError("Tavily Extract не вернул текст этой статьи", 0, false);
+  return t.slice(0, max);
+}
+export async function tavilyExtract(url: string): Promise<string> {
+  const key = process.env["TAVILY_API_KEY"];
+  if (!key) throw new ProviderError("Статья собирается скриптом, а TAVILY_API_KEY не подключён — текст не получен", 0, false);
+  const j = await providerFetch("Tavily", "https://api.tavily.com/extract", {
+    method: "POST", headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" },
+    body: JSON.stringify({ urls: [url], extract_depth: "advanced", format: "text", timeout: 15 }),
+  });
+  return pickExtract(j, url);
+}

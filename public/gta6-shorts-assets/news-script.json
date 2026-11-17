@@ -1,0 +1,44 @@
+{
+  "source": "https://www.rockstargames.com/newswire/article/89834o94713o21/pre-load-grand-theft-auto-vi-now",
+  "run_at": "2026-11-17T14:09:36.448Z",
+  "code": "src/lib/news-script.server.ts buildScriptFromArticle",
+  "ok": true,
+  "url": "https://www.rockstargames.com/newswire/article/89834o94713o21/pre-load-grand-theft-auto-vi-now",
+  "via": "tavily_extract",
+  "fetched_at": "2026-11-17T14:09:54.065Z",
+  "angle": "GTA VI on Xbox One through cloud gaming, with streaming caveats",
+  "shots": [
+    {
+      "text": "GTA VI on Xbox One? The article says yes—via Xbox Cloud Gaming.",
+      "caption": "Xbox One via cloud",
+      "fact": "The game will also be available via XBOX Cloud Gaming on XBOX Series X|S and XBOX One consoles, utilizing XBOX Series S graphics settings.",
+      "brief": "Screenshot of the article's cloud gaming paragraph; highlight 'XBOX Cloud Gaming' and 'XBOX One consoles'.",
+      "role": "evidence",
+      "seconds": 4
+    },
+    {
+      "text": "That cloud version uses Xbox Series S graphics settings.",
+      "caption": "Series S graphics settings",
+      "fact": "utilizing XBOX Series S graphics settings.",
+      "brief": "Close crop of the article's cloud gaming paragraph, highlighting 'utilizing XBOX Series S graphics settings.'",
+      "role": "evidence",
+      "seconds": 6
+    },
+    {
+      "text": "Connection speeds and other technical factors may affect performance differently from local play.",
+      "caption": "Streaming performance caveat",
+      "fact": "connection speeds and other technical factors may influence game performance in ways that would not impact local gameplay.",
+      "brief": "Screenshot of the article's streaming caveat, highlighting the comparison with local gameplay.",
+      "role": "evidence",
+      "seconds": 6
+    },
+    {
+      "text": "Would you try GTA VI through cloud streaming on Xbox One?",
+      "caption": "Would you stream it?",
+      "fact": "The game will also be available via XBOX Cloud Gaming on XBOX Series X|S and XBOX One consoles, utilizing XBOX Series S graphics settings.",
+      "brief": "Return to the article's cloud gaming sentence with 'XBOX One consoles' highlighted and the question caption above.",
+      "role": "evidence",
+      "seconds": 5
+    }
+  ]
+}

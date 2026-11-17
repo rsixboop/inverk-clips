@@ -5,6 +5,7 @@ import { pollNewsVoice, submitNewsVoice } from "@/lib/news-voice.functions";
 import { AppShell } from "@/components/studio/AppShell";
 import { CATALOG, CLIPS, findAsset, findClip, pickAssets } from "@/lib/news-catalog";
 import { findGtaNews, findNewswire, scriptFromArticle } from "@/lib/news-script.functions";
+import { planTimeline } from "@/lib/news-timeline";
 import { MEDIA_LIBRARY, NEWS_SOURCE, PILOT, pilotValid, totalSeconds, type Shot } from "@/lib/news-pilot";
 
 export const Route = createFileRoute("/news")({
@@ -16,7 +17,7 @@ export const Route = createFileRoute("/news")({
   component: () => <AppShell>{() => <News />}</AppShell>,
 });
 
-type Media = { url: string; video: boolean; name: string; state: "loading" | "ok" | "error"; err?: string | undefined } | null;
+type Media = { url: string; video: boolean; name: string; state: "loading" | "ok" | "error"; err?: string | undefined; duration?: number } | null;
 const W = 1080, H = 1920;
 
 function wrap(ctx: CanvasRenderingContext2D, text: string, max: number) {
@@ -40,7 +41,7 @@ function News() {
   const search = async () => { setNw({ busy: true, msg: "Ищу на Rockstar Newswire…" }); try { const r = await findFn(); setFound(r.items); setNw({ busy: false, msg: r.error }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
   const makeScript = async () => { setNw({ busy: true, msg: "Читаю статью и пишу сценарий…" }); try { const r = await scriptFn({ data: { url: source } });
     const ns: Shot[] = r.shots.map((x) => ({ text: x.text, seconds: x.seconds, material: `Факт: «${x.fact}»`, caption: x.caption, fact: x.fact, brief: x.brief, role: x.role })); setShots(ns); setAngle(r.angle); setApproved(false); setVoice(null);
-    setMedia((m) => pickAssets(ns).map((id, k) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
+    setMedia((m) => pickAssets(ns).map((id, k) => { const a = ns[k]!.role === "evidence" ? undefined : findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
     setNw({ busy: false, msg: "Сценарий готов. Проверьте и утвердите перед озвучкой." }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
   const [allowed, setAllowed] = useState(false);
   const [status, setStatus] = useState("");
@@ -74,22 +75,27 @@ function News() {
       setTts({ busy: false, msg: `fal ещё не ответил (запрос ${id}). Нажмите снова — будет только проверка, без новой оплаты.` });
     } catch (e) { setTts({ busy: false, msg: `Ошибка${id && id !== "pending" ? ` (запрос ${id})` : ""}: ${e instanceof Error ? e.message : String(e)}` }); }
   }
-  const ready = approved && allowed && media.every((m) => m?.state === "ok") && pilotValid(shots);
+  const [voiceSec, setVoiceSec] = useState<number | null>(null);
+  useEffect(() => { setVoiceSec(null); if (!voice) return; const el = new Audio(); el.onloadedmetadata = () => setVoiceSec(Number.isFinite(el.duration) ? el.duration : null); el.src = voice.url; }, [voice?.url]);
+  const plan = planTimeline(shots, media.map((m) => (m ? { video: m.video, catalog: m.name.startsWith("Rockstar"), duration: m.duration } : null)), voiceSec);
+  const busyRef = useRef(false); const [busy, setBusy] = useState(false);
+  const ready = approved && allowed && media.every((m) => m?.state === "ok") && pilotValid(shots) && !plan.errors.length && (!voice || voiceSec != null) && !busy;
 
   useEffect(() => { els.current = media.map((m) => { if (!m) return null;
     if (m.video) { const v = document.createElement("video"); v.src = m.url; v.muted = true; v.playsInline = true; return v; }
     const i = new Image(); i.src = m.url; return i; }); }, [media.map((m) => m?.url).join("|")]);
   const setState = (url: string, state: "ok" | "error", err?: string) => setMedia((ms) => ms.map((x) => (x && x.url === url && x.state === "loading" ? { ...x, state, err } : x)));
   useEffect(() => { media.forEach((m) => { if (!m || m.state !== "loading") return;
-    if (m.url.startsWith("blob:")) { setState(m.url, "ok"); return; }
+    if (m.url.startsWith("blob:")) { if (!m.video) { setState(m.url, "ok"); return; } const v = document.createElement("video"); v.muted = true; const src = m.url;
+      v.onloadedmetadata = () => setMedia((ms) => ms.map((x) => (x && x.url === src ? { ...x, state: "ok", duration: v.duration } : x))); v.onerror = () => setState(src, "error", "видео не декодируется"); v.src = src; return; }
     if (m.video) { const src = m.url; fetch(src).then(async (r) => { if (!r.ok) throw new Error(await r.text());
         const b = await r.blob(); const u = URL.createObjectURL(b); const v = document.createElement("video"); v.muted = true;
-        v.onloadeddata = () => setMedia((ms) => ms.map((x) => (x && x.url === src ? { ...x, url: u, state: "ok" } : x)));
+        v.onloadeddata = () => setMedia((ms) => ms.map((x) => (x && x.url === src ? { ...x, url: u, state: "ok", duration: v.duration } : x)));
         v.onerror = () => setState(src, "error", "видео не декодируется"); v.src = u; })
       .catch((e) => setState(src, "error", e instanceof Error && e.message ? e.message : "сеть")); return; }
     fetch(m.url).then(async (r) => { if (!r.ok) setState(m.url, "error", await r.text()); else { const i = new Image(); i.onload = () => setState(m.url, "ok"); i.onerror = () => setState(m.url, "error", "не декодируется"); i.src = m.url; } })
       .catch(() => setState(m.url, "error", "сеть")); }); }, [media]);
-  const autoPick = () => setMedia((m) => pickAssets(shots).map((id, k) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : m[k] && !m[k]!.url.startsWith("/api/rockstar-media/") ? m[k]! : null; }));
+  const autoPick = () => setMedia((m) => pickAssets(shots).map((id, k) => { const a = shots[k]!.role === "evidence" ? undefined : findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : m[k] && !m[k]!.url.startsWith("/api/rockstar-media/") ? m[k]! : null; }));
   const pickCatalog = (i: number, id: string) => { const a = findAsset(id); if (a) setMedia((m) => m.map((x, k) => (k === i ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : x))); };
 
   const pickClip = (i: number, id: string) => { const c = findClip(id); if (c) setMedia((m) => m.map((x, k) => (k === i ? { url: `/api/rockstar-media/${c.id}`, video: true, name: `Rockstar видео: ${c.title}`, state: "loading" } : x))); };
@@ -116,7 +122,19 @@ function News() {
   }
 
   async function play(record: boolean) {
+    if (busyRef.current) return; busyRef.current = true; setBusy(true);
+    try { await playInner(record); } catch (e) { setStatus(`Остановлено: ${e instanceof Error ? e.message : String(e)}`); } finally { busyRef.current = false; setBusy(false); }
+  }
+  async function decodeAll(strict: boolean) {
+    await Promise.all(els.current.map((el, i) => { if (!el) { if (strict) throw new Error(`шот ${i + 1}: нет материала`); return; }
+      if (el instanceof HTMLImageElement) return el.decode().catch(() => { throw new Error(`шот ${i + 1}: картинка не декодируется`); });
+      if (el.readyState >= 2) return;
+      return new Promise<void>((res, rej) => { el.onloadeddata = () => res(); el.onerror = () => rej(new Error(`шот ${i + 1}: видео не декодируется`)); el.load(); setTimeout(() => rej(new Error(`шот ${i + 1}: видео не загрузилось за 15 с`)), 15000); }); }));
+  }
+  async function playInner(record: boolean) {
     setOut(null);
+    if (record && plan.errors.length) throw new Error(plan.errors.join("; "));
+    setStatus("Жду декодирования всех материалов…"); await decodeAll(record);
     const a = voiceNode();
     if (a) { await a.ctx.resume(); a.el.currentTime = 0; }
     let rec: MediaRecorder | null = null; const chunks: Blob[] = [];
@@ -129,11 +147,11 @@ function News() {
       rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8e6 });
       rec.ondataavailable = (e) => chunks.push(e.data); rec.start();
     }
-    if (a) { try { await a.el.play(); } catch { rec?.stop(); setStatus("Озвучка не воспроизводится — экспорт остановлен, чтобы не сохранить немой ролик."); return; } }
+    if (a) { try { await a.el.play(); } catch (e) { rec?.stop(); throw new Error(`озвучка не воспроизводится (${(e as Error).message}) — немой ролик не сохраняю`); } }
     for (let i = 0; i < shots.length; i++) {
       setStatus(`${record ? "Запись" : "Предпросмотр"}: шот ${i + 1}/4`);
-      const el = els.current[i]; if (el instanceof HTMLVideoElement) { el.currentTime = 0; await el.play().catch(() => {}); }
-      const begin = performance.now(), duration = shots[i]!.seconds * 1000, end = begin + duration;
+      const el = els.current[i]; if (el instanceof HTMLVideoElement) { el.currentTime = 0; try { await el.play(); } catch (e) { rec?.stop(); a?.el.pause(); throw new Error(`шот ${i + 1}: видео не воспроизводится (${(e as Error).message})`); } }
+      const begin = performance.now(), duration = plan.seconds[i]! * 1000, end = begin + duration;
       while (performance.now() < end) { draw(i, Math.min(1, (performance.now() - begin) / duration)); await new Promise((r) => requestAnimationFrame(r)); }
       if (el instanceof HTMLVideoElement) el.pause();
     }
@@ -166,7 +184,8 @@ function News() {
           {!approved && <button onClick={() => setApproved(true)} className="h-7 rounded-md border border-primary px-2 text-primary">Утвердить сценарий</button>}
         </div>
         <button onClick={autoPick} className="h-7 rounded-md border border-border px-2 text-xs">Подобрать кадры автоматически</button>
-        <p className="font-mono text-xs">Длительность: {totalSeconds(shots)} с {pilotValid(shots) ? "" : "— нужно 18–23 с"}</p>
+        <p className="font-mono text-xs">Длительность: {totalSeconds(shots)} с {pilotValid(shots) ? "" : "— нужно 18–23 с"}{voiceSec != null && ` · по озвучке: ${plan.total.toFixed(1)} с`}</p>
+        {plan.errors.map((e) => <p key={e} className="text-xs text-destructive">{e}</p>)}
         {shots.map((s, i) => (
           <div key={i} className="rounded-md border border-border p-3 space-y-2 text-sm">
             <div className="flex items-center gap-2"><b>Шот {i + 1}</b>
@@ -194,7 +213,7 @@ function News() {
       </div>
       <div className="panel p-3 space-y-2">
         <canvas ref={canvas} width={W} height={H} className="aspect-[9/16] w-full rounded bg-muted" />
-        <button disabled={!media.some(Boolean)} onClick={() => play(false)} className="h-8 w-full rounded-md border border-border text-xs disabled:opacity-50">Предпросмотр раскадровки</button>
+        <button disabled={busy || !media.some(Boolean)} onClick={() => play(false)} className="h-8 w-full rounded-md border border-border text-xs disabled:opacity-50">Предпросмотр раскадровки</button>
         <button disabled={!ready} onClick={() => play(true)} className="h-8 w-full rounded-md bg-primary text-xs text-primary-foreground disabled:opacity-50">{voice ? "Экспорт видео с озвучкой" : "Экспорт видео (без звука)"}</button>
         {!ready && <p className="text-[11px] text-muted-foreground">Для экспорта: все 4 медиа загружены, подтверждение прав, 18–23 с.</p>}
         <p className="text-xs">{status}</p>
