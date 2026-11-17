@@ -54,21 +54,48 @@ def render(config):
         print("VOICE_LENGTH",i+1,round(length,2),"SCENE",round(dur[-1],2),flush=True)
     # The style-aware library automatically checks whether each concept already
     # exists at a matching quality/style before it spends on a new animation.
-    assets,spent=ensure_assets([s["asset"] for s in scenes],
+    asset_scenes=[s for s in scenes if "asset" in s]
+    assets,spent=ensure_assets([s["asset"] for s in asset_scenes],
                                ep.get("style","vice-neon"),ep.get("max_asset_spend_usd",5),episode_id=project)
     if len(assets)<4:raise RuntimeError("Minimum 4 genuine generated motion assets required")
     print("ASSET_SELECTION",len(assets),"estimated new spend",spent,flush=True)
-    # Encode montage to standardized 720x1280 H.264 clips at *native speed*.
-    parts=[]
-    for i,(asset,length) in enumerate(zip(assets,dur)):
-        path=ROOT/asset["video_path"]
-        if float(asset.get("duration",0))<length-0.02:
-            raise RuntimeError(f"Asset {asset['id']} is shorter than the spoken shot")
+    # Real sourced imagery can open the video; the remaining four animated
+    # explanatory clips are always from the AI-generated reusable library.
+    parts=[]; asset_by_scene=[]; ai=iter(assets)
+    for i,(scene,length) in enumerate(zip(scenes,dur)):
         cut=work/f"shot_{i:02}.mp4"
-        run(["ffmpeg","-y","-nostdin","-v","error","-i",str(path),"-t",f"{length:.4f}",
-             "-vf","scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,setsar=1",
-             "-an","-c:v","libx264","-preset","fast","-crf","25","-maxrate","1700k",
-             "-bufsize","2600k","-pix_fmt","yuv420p","-movflags","+faststart",str(cut)])
+        source=scene.get("stock_image")
+        if source:
+            if source not in ("vc16","vc14","vc01","vc11","vc02"):
+                raise RuntimeError("Unverified official intro image: "+str(source))
+            image=ROOT/"public/gta6-media"/(source+".jpg")
+            if not image.exists():raise RuntimeError("Missing official source image")
+            font=subprocess.run(["fc-match","-f","%{file}","DejaVu Sans:style=Bold"],
+                                text=True,capture_output=True,check=True).stdout.strip()
+            filters=("scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,"
+                     "zoompan=z='min(zoom+0.0007,1.10)':x='iw/2-(iw/zoom/2)':"
+                     "y='ih/2-(ih/zoom/2)':d=1:s=720x1280:fps=30,"
+                     "drawtext=fontfile='"+font+"':text='GTA VI / PS5':"
+                     "x=42:y=970:fontsize=65:fontcolor=white:borderw=3:"
+                     "bordercolor=black:enable='lt(t,4.0)'")
+            run(["ffmpeg","-y","-nostdin","-v","error","-loop","1","-framerate","30",
+                 "-t",f"{length:.4f}","-i",str(image),"-vf",filters,
+                 "-an","-c:v","libx264","-preset","fast","-crf","25",
+                 "-maxrate","1700k","-bufsize","2600k","-pix_fmt","yuv420p",str(cut)])
+            asset_by_scene.append({"type":"official_still","id":source,"video":None})
+        else:
+            asset=next(ai)
+            path=ROOT/asset["video_path"]
+            if float(asset.get("duration",0))<length-0.02:
+                raise RuntimeError(f"Asset {asset['id']} shorter than narrator line")
+            run(["ffmpeg","-y","-nostdin","-v","error","-i",str(path),"-t",f"{length:.4f}",
+                 "-vf","scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,setsar=1",
+                 "-an","-c:v","libx264","-preset","fast","-crf","25",
+                 "-maxrate","1700k","-bufsize","2600k","-pix_fmt","yuv420p",
+                 "-movflags","+faststart",str(cut)])
+            asset_by_scene.append({"type":"generated_motion","id":asset["id"],
+                                   "semantic_key":asset["semantic_key"],
+                                   "video":asset["video_path"],"qc":asset.get("technical_qc")})
         parts.append(cut)
     listing=work/"concat.txt"
     listing.write_text("".join("file '"+str(p.resolve()).replace("'","")+"'\n" for p in parts))
@@ -102,9 +129,8 @@ def render(config):
          "-movflags","+faststart","-t",f"{total:.4f}",str(outfile)])
     metadata={"id":project,"source_url":ep["source_url"],"style":ep.get("style","vice-neon"),
               "output":str(outfile.relative_to(ROOT)),"duration":round(total,2),
-              "assets":[{"id":a["id"],"semantic_key":a["semantic_key"],"video":a["video_path"],
-                         "qc":a.get("technical_qc"),"narration":s["narration"],"at":round(t,2)}
-                         for a,s,t in zip(assets,scenes,starts)],
+              "assets":[{**a,"narration":sc["narration"],"at":round(t,2)}
+                         for a,sc,t in zip(asset_by_scene,scenes,starts)],
               "estimated_new_asset_spend_usd":spent}
     save(work/"episode-manifest.json",metadata)
     check=probe(outfile)
