@@ -1,0 +1,29 @@
+{
+  "title": "GTA VI on Xbox One via cloud — test v2",
+  "provenance": "agent-assisted: narration from news-script.json (AI script, quotes verified verbatim); edit plan hand-written by the agent; no AI-generated imagery",
+  "output": {"file": "public/gta6_cloud_v2.mp4", "w": 720, "h": 1280, "fps": 30, "end": 22.2},
+  "voice": {"file": "scripts/news-render/voice.wav", "tts": "fal-ai/kokoro/american-english am_michael, 1 call, see tts.json", "loudnorm": "I=-14:TP=-1.5:LRA=11"},
+  "sources": {
+    "rockstar": "https://www.rockstargames.com/newswire/article/89834o94713o21/pre-load-grand-theft-auto-vi-now",
+    "xbox": "https://news.xbox.com/en-us/2026/11/10/grand-theft-auto-6-comes-to-xbox-cloud-gaming-november-19/",
+    "clips": "https://www.rockstargames.com/VI/media/videos (official character clips, used as illustration, speed 1.0, no loops)"
+  },
+  "segments": [
+    {"t": [0.0, 2.9], "kind": "title", "role": "illustration", "lines": ["XBOX ONE", "+ GTA VI", "+ CLOUD"], "speech": "GTA VI on Xbox One?"},
+    {"t": [2.9, 3.9], "kind": "clip", "role": "illustration", "clip": "jason", "caption": "THE ANSWER: |YES|"},
+    {"t": [3.9, 6.95], "kind": "quote", "role": "evidence", "quote": "Grand Theft Auto VI will be playable on day one through XBOX Cloud Gaming on XBOX One and XBOX Series X|S", "source": "Xbox Wire · Nov 10, 2026", "caption": "|XBOX CLOUD| GAMING"},
+    {"t": [6.95, 9.95], "kind": "diagram", "role": "illustration", "caption": "|SERIES S| GRAPHICS"},
+    {"t": [9.95, 10.95], "kind": "clip", "role": "illustration", "clip": "cal", "caption": "STREAMED, NOT |INSTALLED|"},
+    {"t": [10.95, 11.95], "kind": "clip", "role": "illustration", "clip": "boobie", "caption": "BUT..."},
+    {"t": [11.95, 14.2], "kind": "bars", "role": "illustration", "caption": "|CONNECTION| SPEED MATTERS"},
+    {"t": [14.2, 17.4], "kind": "quote", "role": "evidence", "quote": "connection speeds and other technical factors may influence game performance in ways that would not impact local gameplay.", "source": "Rockstar Newswire", "caption": "MAY DIFFER FROM |LOCAL| PLAY"},
+    {"t": [17.4, 18.9], "kind": "clip", "role": "illustration", "clip": "lucia", "caption": "WOULD YOU |STREAM| IT?"},
+    {"t": [18.9, 22.2], "kind": "end", "role": "illustration", "lines": ["WOULD YOU", "STREAM GTA VI", "ON XBOX ONE?"], "note": "Game sold separately. Cloud availability varies by market and device. Streaming from Nov 19, 1am ET."}
+  ],
+  "clip_sources": {
+    "jason": "https://www.rockstargames.com/VI/_next/static/media/Jason_Duval_Video_Clip.10.gc09c9y-j9.mp4",
+    "lucia": "https://www.rockstargames.com/VI/_next/static/media/Lucia_Caminos_Video_Clip.0g8.3fx84ixw..mp4",
+    "cal": "https://www.rockstargames.com/VI/_next/static/media/Cal_Hampton_Video_Clip.13-520tpb1vbq.mp4",
+    "boobie": "https://www.rockstargames.com/VI/_next/static/media/Boobie_Ike_Video_Clip.0yf7eprhr68rj.mp4"
+  }
+}
