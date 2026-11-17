@@ -11,12 +11,13 @@ LIME, WHITE, BG = (190, 242, 62), (255, 255, 255), (22, 24, 26)
 CACHE = "/tmp/news-render-src"; os.makedirs(CACHE, exist_ok=True)
 
 def clip_frames(name, n):
+    cx = P.get("crop_x", {}).get(name, 0.5)
     path = f"{CACHE}/{name}.mp4"
     if not os.path.exists(path): urllib.request.urlretrieve(P["clip_sources"][name], path)
     fr = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v", "-count_frames", "-show_entries", "stream=nb_read_frames,r_frame_rate", "-of", "csv=p=0", path], capture_output=True, text=True).stdout.strip().split(",")
     assert fr[0] == f"{FPS}/1", f"{name}: source fps {fr[0]} != {FPS} (would need resampling)"
     assert n <= int(fr[1]), f"{name}: insert {n} frames > source {fr[1]} — refuse to slow down or loop"
-    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}", "-frames:v", str(n), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True).stdout
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}:(iw-{W})*{cx}:(ih-{H})/2", "-frames:v", str(n), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True).stdout
     sz = W * H * 3; return [Image.frombytes("RGB", (W, H), raw[i*sz:(i+1)*sz]) for i in range(n)]
 
 def caption(d, text, y=H*0.70, size=64):
@@ -40,7 +41,17 @@ def wrap(d, text, f, maxw):
         else: cur = (cur + " " + w).strip()
     return out + [cur]
 
-def bg(p):
+_BG = {}
+def bg(p, seg=None):
+    src = seg.get("bg") if seg else None
+    if src:
+        if src not in _BG:
+            b = Image.open(src).convert("RGB"); s0 = max(W / b.width, H / b.height) * 1.12
+            _BG[src] = b.resize((int(b.width * s0), int(b.height * s0)), Image.LANCZOS).filter(ImageFilter.GaussianBlur(2))
+        b = _BG[src]; z = 1 + 0.06 * p; bw, bh = int(W * 1.06 / z), int(H * 1.06 / z)
+        x0, y0 = (b.width - bw) // 2, (b.height - bh) // 2
+        im = Image.blend(b.crop((x0, y0, x0 + bw, y0 + bh)).resize((W, H)), Image.new("RGB", (W, H), (0, 0, 0)), 0.62)
+        return im, ImageDraw.Draw(im)
     im = Image.new("RGB", (W, H), BG); d = ImageDraw.Draw(im)
     for i in range(0, H, 40): d.line([(0, i + int(p*40) % 40), (W, i + int(p*40) % 40)], fill=(30, 33, 36), width=1)
     return im, d
@@ -48,7 +59,7 @@ def bg(p):
 def render(seg, k, n):
     p = k / max(1, n - 1); kind = seg["kind"]
     if kind == "title":
-        im, d = bg(p)
+        im, d = bg(p, seg)
         for i, l in enumerate(seg["lines"]):
             s = 118 if i == 0 else 110; pop = min(1, (k - i * 8) / 6) if k >= i * 8 else (0 if i else 1)
             if pop <= 0: continue
@@ -57,14 +68,13 @@ def render(seg, k, n):
         d.rectangle([60, 300, 60 + int((W - 120) * min(1, p * 2)), 312], fill=LIME)
         return im
     if kind == "quote":
-        im, d = bg(p); f = F(44); x0 = 70 + int(20 * (1 - min(1, p * 4)))
-        d.rounded_rectangle([50, 260, W - 50, 900], 24, fill=(36, 39, 42), outline=LIME, width=4)
-        d.text((x0, 290), "“", font=F(120), fill=LIME)
-        for i, l in enumerate(wrap(d, seg["quote"], f, W - 160)): d.text((x0 + 10, 420 + i * 56), l, font=f, fill=WHITE)
-        d.text((x0 + 10, 830), "SOURCE: " + seg["source"], font=F(32), fill=LIME)
-        caption(d, seg["caption"], y=1000); return im
+        im, d = bg(p, seg); f = F(58); x0 = 70 + int(20 * (1 - min(1, p * 5)))
+        d.rounded_rectangle([40, 300, W - 40, 1000], 24, fill=(36, 39, 42), outline=LIME, width=5)
+        d.text((x0, 320), "“", font=F(130), fill=LIME)
+        for i, l in enumerate(wrap(d, seg["quote"], f, W - 150)): d.text((x0 + 6, 460 + i * 70), l, font=f, fill=WHITE)
+        d.text((x0 + 6, 930), "SOURCE: " + seg["source"], font=F(34), fill=LIME); return im
     if kind == "diagram":
-        im, d = bg(p); cx = W // 2
+        im, d = bg(p, seg); cx = W // 2
         d.ellipse([cx - 170, 250, cx + 170, 470], fill=(50, 54, 58), outline=LIME, width=5); d.text((cx - 95, 330), "CLOUD", font=F(60), fill=WHITE)
         d.text((cx - 175, 480), "Series S settings", font=F(38), fill=LIME)
         d.rounded_rectangle([cx - 200, 780, cx + 200, 920], 18, fill=(50, 54, 58), outline=WHITE, width=4); d.text((cx - 150, 820), "XBOX ONE", font=F(64), fill=WHITE)
@@ -73,13 +83,13 @@ def render(seg, k, n):
             yy = 540 + ((p * 2 + j / 3) % 1) * 220; d.ellipse([cx - 14, yy - 14, cx + 14, yy + 14], fill=LIME)
         caption(d, seg["caption"], y=1020); return im
     if kind == "bars":
-        im, d = bg(p)
+        im, d = bg(p, seg)
         for j in range(5):
             on = (k // 6 + j) % 5 < 3; h = 70 + j * 70
             d.rectangle([150 + j * 90, 800 - h, 210 + j * 90, 800], fill=LIME if on else (70, 74, 78))
         caption(d, seg["caption"], y=950); return im
     if kind == "end":
-        im, d = bg(p)
+        im, d = bg(p, seg)
         for i, l in enumerate(seg["lines"]):
             f = F(78 if i != 1 else 70); tw = d.textlength(l, font=f); off = int(30 * max(0, 1 - k / 8 + i * 0.3))
             d.text(((W - tw) / 2, 330 + i * 120 + off), l, font=f, fill=LIME if i == 1 else WHITE, stroke_width=4, stroke_fill=(0, 0, 0))

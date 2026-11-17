@@ -1,29 +1,196 @@
 {
   "title": "GTA VI on Xbox One via cloud — test v2",
   "provenance": "agent-assisted: narration from news-script.json (AI script, quotes verified verbatim); edit plan hand-written by the agent; no AI-generated imagery",
-  "output": {"file": "public/gta6_cloud_v2.mp4", "w": 720, "h": 1280, "fps": 30, "end": 22.2},
-  "voice": {"file": "scripts/news-render/voice.wav", "tts": "fal-ai/kokoro/american-english am_michael, 1 call, see tts.json", "loudnorm": "I=-14:TP=-1.5:LRA=11"},
+  "output": {
+    "file": "public/gta6_cloud_v2.mp4",
+    "w": 720,
+    "h": 1280,
+    "fps": 30,
+    "end": 22.2
+  },
+  "voice": {
+    "file": "scripts/news-render/voice.wav",
+    "tts": "fal-ai/kokoro/american-english am_michael, 1 call, see tts.json",
+    "loudnorm": "I=-14:TP=-1.5:LRA=11"
+  },
   "sources": {
     "rockstar": "https://www.rockstargames.com/newswire/article/89834o94713o21/pre-load-grand-theft-auto-vi-now",
     "xbox": "https://news.xbox.com/en-us/2026/11/10/grand-theft-auto-6-comes-to-xbox-cloud-gaming-november-19/",
     "clips": "https://www.rockstargames.com/VI/media/videos (official character clips, used as illustration, speed 1.0, no loops)"
   },
   "segments": [
-    {"t": [0.0, 2.9], "kind": "title", "role": "illustration", "lines": ["XBOX ONE", "+ GTA VI", "+ CLOUD"], "speech": "GTA VI on Xbox One?"},
-    {"t": [2.9, 3.9], "kind": "clip", "role": "illustration", "clip": "jason", "caption": "THE ANSWER: |YES|"},
-    {"t": [3.9, 6.95], "kind": "quote", "role": "evidence", "quote": "Grand Theft Auto VI will be playable on day one through XBOX Cloud Gaming on XBOX One and XBOX Series X|S", "source": "Xbox Wire · Nov 10, 2026", "caption": "|XBOX CLOUD| GAMING"},
-    {"t": [6.95, 9.95], "kind": "diagram", "role": "illustration", "caption": "|SERIES S| GRAPHICS"},
-    {"t": [9.95, 10.95], "kind": "clip", "role": "illustration", "clip": "cal", "caption": "STREAMED, NOT |INSTALLED|"},
-    {"t": [10.95, 11.95], "kind": "clip", "role": "illustration", "clip": "boobie", "caption": "BUT..."},
-    {"t": [11.95, 14.2], "kind": "bars", "role": "illustration", "caption": "|CONNECTION| SPEED MATTERS"},
-    {"t": [14.2, 17.4], "kind": "quote", "role": "evidence", "quote": "connection speeds and other technical factors may influence game performance in ways that would not impact local gameplay.", "source": "Rockstar Newswire", "caption": "MAY DIFFER FROM |LOCAL| PLAY"},
-    {"t": [17.4, 18.9], "kind": "clip", "role": "illustration", "clip": "lucia", "caption": "WOULD YOU |STREAM| IT?"},
-    {"t": [18.9, 22.2], "kind": "end", "role": "illustration", "lines": ["WOULD YOU", "STREAM GTA VI", "ON XBOX ONE?"], "note": "Game sold separately. Cloud availability varies by market and device. Streaming from Nov 19, 1am ET."}
+    {
+      "t": [
+        0.0,
+        2.9
+      ],
+      "kind": "title",
+      "bg": "public/gta6-shorts-assets/vice_city_14.jpg",
+      "lines": [
+        "XBOX ONE",
+        "+ GTA VI",
+        "+ CLOUD"
+      ],
+      "role": "illustration"
+    },
+    {
+      "t": [
+        2.9,
+        3.9
+      ],
+      "kind": "clip",
+      "clip": "jason",
+      "caption": "THE ANSWER: |YES|",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        3.9,
+        5.95
+      ],
+      "kind": "quote",
+      "role": "evidence",
+      "quote": "playable on day one through XBOX Cloud Gaming on XBOX One",
+      "source": "Xbox Wire · Nov 10, 2026",
+      "bg": "public/gta6-shorts-assets/vice_city_14.jpg"
+    },
+    {
+      "t": [
+        5.95,
+        6.95
+      ],
+      "kind": "clip",
+      "clip": "dre",
+      "caption": "|XBOX CLOUD| GAMING",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        6.95,
+        9.2
+      ],
+      "kind": "diagram",
+      "bg": "public/gta6-shorts-assets/vice_city_01.jpg",
+      "caption": "|SERIES S| GRAPHICS",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        9.2,
+        10.2
+      ],
+      "kind": "clip",
+      "clip": "cal",
+      "caption": "|SERIES S| SETTINGS",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        10.2,
+        11.2
+      ],
+      "kind": "clip",
+      "clip": "dimez",
+      "caption": "STREAMED, NOT |INSTALLED|",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        11.2,
+        12.2
+      ],
+      "kind": "clip",
+      "clip": "boobie",
+      "caption": "BUT...",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        12.2,
+        13.2
+      ],
+      "kind": "clip",
+      "clip": "raul",
+      "caption": "|CONNECTION| SPEED",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        13.2,
+        15.0
+      ],
+      "kind": "quote",
+      "role": "evidence",
+      "quote": "connection speeds and other technical factors may influence game performance",
+      "source": "Rockstar Newswire",
+      "bg": "public/gta6-shorts-assets/jason_and_lucia_02.jpg"
+    },
+    {
+      "t": [
+        15.0,
+        16.4
+      ],
+      "kind": "clip",
+      "clip": "lucia",
+      "caption": "MAY DIFFER FROM |LOCAL| PLAY",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        16.4,
+        17.4
+      ],
+      "kind": "bars",
+      "bg": "public/gta6-shorts-assets/vice_city_01.jpg",
+      "caption": "|LAG| CHANGES THINGS",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        17.4,
+        18.4
+      ],
+      "kind": "clip",
+      "clip": "brian",
+      "caption": "WOULD YOU |STREAM| IT?",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        18.4,
+        22.2
+      ],
+      "kind": "end",
+      "bg": "public/gta6-shorts-assets/jason_and_lucia_02.jpg",
+      "lines": [
+        "WOULD YOU",
+        "STREAM GTA VI",
+        "ON XBOX ONE?"
+      ],
+      "note": "Game sold separately. Cloud availability varies by market and device. Streaming from Nov 19, 1am ET.",
+      "role": "illustration"
+    }
   ],
   "clip_sources": {
     "jason": "https://www.rockstargames.com/VI/_next/static/media/Jason_Duval_Video_Clip.10.gc09c9y-j9.mp4",
     "lucia": "https://www.rockstargames.com/VI/_next/static/media/Lucia_Caminos_Video_Clip.0g8.3fx84ixw..mp4",
     "cal": "https://www.rockstargames.com/VI/_next/static/media/Cal_Hampton_Video_Clip.13-520tpb1vbq.mp4",
-    "boobie": "https://www.rockstargames.com/VI/_next/static/media/Boobie_Ike_Video_Clip.0yf7eprhr68rj.mp4"
-  }
+    "boobie": "https://www.rockstargames.com/VI/_next/static/media/Boobie_Ike_Video_Clip.0yf7eprhr68rj.mp4",
+    "dre": "https://www.rockstargames.com/VI/_next/static/media/DreQuan_Priest_Video_Clip.0g~ify.ccqpkj.mp4",
+    "dimez": "https://www.rockstargames.com/VI/_next/static/media/Real_Dimez_Video_Clip.0.cgr_26mspvm.mp4",
+    "raul": "https://www.rockstargames.com/VI/_next/static/media/Raul_Bautista_Video_Clip.0vg4g-gyqaksg.mp4",
+    "brian": "https://www.rockstargames.com/VI/_next/static/media/Brian_Heder_Video_Clip.0yy.ets6sso8~.mp4"
+  },
+  "crop_x": {
+    "jason": 0.87,
+    "lucia": 0.54,
+    "cal": 1.0,
+    "boobie": 0.0,
+    "dimez": 0.73,
+    "dre": 0.61,
+    "raul": 0.73,
+    "brian": 0.84
+  },
+  "crop_note": "crop_x = horizontal crop point (0 left..1 right) chosen per clip so faces stay in frame; scale preserves aspect, never stretched",
+  "background_note": "title/diagram/bars/end cards sit on darkened official Rockstar screenshots (slow zoom), not plain black"
 }
