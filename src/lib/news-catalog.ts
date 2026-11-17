@@ -31,6 +31,11 @@ export function pickAssets(shots: { text: string; material: string; brief?: stri
   return shots.map((s) => {
     if (s.role === "evidence") return "";
     const brief = (s.brief ?? "").toLowerCase(), rest = (s.text + " " + s.material).toLowerCase();
+    // The catalog contains game art, NOT console menus or proof of technical
+    // claims. Do not silently substitute a random character/city shot for a
+    // requested storage screen, download UI, lock, countdown or game library.
+    // These need a purpose-built explanation layer or an explicitly supplied asset.
+    if (/\\b(storage (?:screen|menu|interface)|disk (?:space|meter)|download (?:bar|progress|screen)|console (?:menu|interface)|game library|latency graph|connection meter|release calendar|countdown|lock icon)\\b/.test(brief)) return "";
     const best = CATALOG.filter((a) => !used.has(a.id))
       .map((a) => ({ a, score: a.tags.reduce((n, t) => n + (hasWord(brief, t) ? 3 : 0) + (hasWord(rest, t) ? 1 : 0), 0) }))
       .sort((x, y) => y.score - x.score)[0];
