@@ -227,6 +227,11 @@ function News() {
       </div>
       <div className="panel p-3 space-y-2">
         <div className="rounded-md border border-border p-2 space-y-1">
+          <b className="text-xs">Новый монтаж · GTA VI / Xbox Cloud (V4)</b>
+          <video controls playsInline preload="metadata" src="/gta6_cloud_v4.mp4" className="w-full rounded bg-muted" />
+          <a href="/gta6_cloud_v4.mp4" download="gta6_cloud_v4.mp4" className="block text-xs text-primary underline">Скачать V4 .mp4 (14 равномерных сцен)</a>
+        </div>
+        <div className="rounded-md border border-border p-2 space-y-1">
           <b className="text-xs">Новый тест · GTA VI / Xbox Cloud (V3)</b>
           <video controls playsInline preload="metadata" src="/gta6_cloud_v3.mp4" className="w-full rounded bg-muted" />
           <a href="/gta6_cloud_v3.mp4" download="gta6_cloud_v3.mp4" className="block text-xs text-primary underline">Скачать V3 .mp4 (22 с, 720×1280)</a>
