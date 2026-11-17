@@ -85,25 +85,33 @@ def write_wav(path, payload, rate=SR):
         f.setnchannels(1);f.setsampwidth(2);f.setframerate(rate);f.writeframes(payload)
 
 def make_music(duration):
-    # Own instrumental: simple chordal drone, syncopated bass, muted tick/kick.
-    # No direct use, reproduction, or interpolation of GTA score/radio themes.
+    # Original neon-crime underscore, no GTA music/samples: minor chords,
+    # eighth-note arp, pulsing sub-bass, kick/snare and a gentle CTA accent.
     from array import array
-    length=int(duration*24000); samples=array("h")
-    progression=[(146.83,174.61,220.0),(116.54,146.83,174.61),
-                 (174.61,220.0,261.63),(130.81,164.81,196.0)]
-    for i in range(length):
-        t=i/24000
-        chord=progression[int(t//5)%4]
-        pad=sum(math.sin(2*math.pi*f*t+0.09*math.sin(2*math.pi*0.28*t)) for f in chord)/3
-        pulse=(1+math.sin(2*math.pi*0.16*t))/2
-        low=math.sin(2*math.pi*(chord[0]/2)*t) * (0.35+0.65*max(0,1-(t%0.625)/0.625)**3)
-        beat=t%0.625
-        kick=math.sin(2*math.pi*(74-35*min(1,beat*9))*beat)*math.exp(-beat*21)
-        ticks=(math.sin(2*math.pi*6300*t)*math.exp(-(t%0.3125)*80))*0.04
-        fade=min(1,t/0.45,max(0,(duration-t)/0.65))
-        sample=fade*(0.21*pad*(0.7+0.3*pulse)+0.16*low+0.12*kick+ticks)
-        samples.append(int(max(-1,min(1,sample))*32767))
-    write_wav(BASE/"original_music.wav",samples.tobytes(),24000)
+    rate=24000
+    out=array("h")
+    bpm=98; beat=60/bpm
+    chords=[
+        (98.0,(196.0,233.08,293.66)),
+        (77.78,(155.56,196.0,233.08)),
+        (116.54,(233.08,293.66,349.23)),
+        (87.31,(174.61,220.0,261.63))
+    ]
+    for i in range(int(duration*rate)):
+        t=i/rate
+        root,notes=chords[int(t/(beat*4))%4]
+        pad=0.24*sum(math.sin(2*math.pi*f*t+0.04*math.sin(2*math.pi*0.17*t)) for f in notes)/3
+        eighth=t%(beat/2)
+        arp_note=notes[(int(t/(beat/2))%6)//2]
+        arp=0.11*math.exp(-eighth*7.5)*math.sin(2*math.pi*arp_note*2*t)
+        phase=t%beat
+        bass=0.19*(0.2+0.8*math.exp(-phase*5))*math.sin(2*math.pi*root*t)
+        kick=0.26*math.exp(-phase*27)*math.sin(2*math.pi*(64-25*min(1,phase*10))*phase)
+        snare_phase=(t-beat/2)%beat
+        snare=0.038*math.exp(-snare_phase*30)*math.sin(2*math.pi*1800*t)*math.sin(2*math.pi*1073*t)
+        fade=min(1,t/0.5,max(0,(duration-t)/0.8))
+        out.append(round(max(-0.9,min(0.9,fade*(pad+arp+bass+kick+snare)))*32767))
+    write_wav(BASE/"original_music.wav",out.tobytes(),rate)
 
 def source_img(key):
     fp=ROOT/"public/gta6-media"/(key+".jpg")
