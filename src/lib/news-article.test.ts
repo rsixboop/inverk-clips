@@ -13,6 +13,10 @@ describe("news article", () => {
     const r = validateScript({ angle: "PS5 Pro vs 30fps", shots: ok }, art);
     expect(r.angle).toBe("PS5 Pro vs 30fps"); expect(r.shots[0]).toMatchObject({ caption: "30 FPS", role: "illustration", seconds: 4 });
   });
+  it("allows no-spoiler shots with empty on-screen caption", () => {
+    const r = validateScript({ angle: "Skip obvious headline", shots: ok.map(x => ({ ...x, caption: "" })) }, art);
+    expect(r.shots.every(s => s.caption === "")).toBe(true);
+  });
   it("rejects facts absent from article", () => {
     expect(() => validateScript({ angle: "a", shots: [...ok.slice(0, 3), sh("runs at 60 FPS on PS5 Pro")] }, art)).toThrow(/не найден/);
   });
