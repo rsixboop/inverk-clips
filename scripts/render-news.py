@@ -42,7 +42,12 @@ def wrap(d, text, f, maxw):
     return out + [cur]
 
 _BG = {}
-def bg(p, seg=None):
+def bg(p, seg=None, underlay=None):
+    # Use moving footage as the canvas for information overlays.
+    # No frame repetition or slowed footage: each insert consumes native 30 fps.
+    if underlay is not None:
+        im = Image.blend(underlay.copy(), Image.new("RGB", (W, H), (0, 0, 0)), 0.48)
+        return im, ImageDraw.Draw(im)
     src = seg.get("bg") if seg else None
     if src:
         if src not in _BG:
@@ -56,10 +61,10 @@ def bg(p, seg=None):
     for i in range(0, H, 40): d.line([(0, i + int(p*40) % 40), (W, i + int(p*40) % 40)], fill=(30, 33, 36), width=1)
     return im, d
 
-def render(seg, k, n):
+def render(seg, k, n, underlay=None):
     p = k / max(1, n - 1); kind = seg["kind"]
     if kind == "title":
-        im, d = bg(p, seg)
+        im, d = bg(p, seg, underlay)
         for i, l in enumerate(seg["lines"]):
             s = 118 if i == 0 else 110; pop = min(1, (k - i * 8) / 6) if k >= i * 8 else (0 if i else 1)
             if pop <= 0: continue
@@ -68,13 +73,15 @@ def render(seg, k, n):
         d.rectangle([60, 300, 60 + int((W - 120) * min(1, p * 2)), 312], fill=LIME)
         return im
     if kind == "quote":
-        im, d = bg(p, seg); f = F(58); x0 = 70 + int(20 * (1 - min(1, p * 5)))
-        d.rounded_rectangle([40, 300, W - 40, 1000], 24, fill=(36, 39, 42), outline=LIME, width=5)
-        d.text((x0, 320), "“", font=F(130), fill=LIME)
-        for i, l in enumerate(wrap(d, seg["quote"], f, W - 150)): d.text((x0 + 6, 460 + i * 70), l, font=f, fill=WHITE)
-        d.text((x0 + 6, 930), "SOURCE: " + seg["source"], font=F(34), fill=LIME); return im
+        im, d = bg(p, seg, underlay); f = F(49); x0 = 70 + int(16 * (1 - min(1, p * 6)))
+        # Compact lower-third proof label: retain readable source but don't
+        # replace the whole video with an oversized static quotation slide.
+        d.rounded_rectangle([40, 665, W - 40, 1170], 24, fill=(27, 30, 33), outline=LIME, width=4)
+        d.text((x0, 688), "OFFICIAL SOURCE", font=F(34), fill=LIME)
+        for i, l in enumerate(wrap(d, seg["quote"], f, W - 160)[:5]): d.text((x0 + 3, 755 + i * 69), l, font=f, fill=WHITE)
+        d.text((x0, 1100), seg["source"], font=F(32), fill=LIME); return im
     if kind == "diagram":
-        im, d = bg(p, seg); cx = W // 2
+        im, d = bg(p, seg, underlay); cx = W // 2
         d.ellipse([cx - 170, 250, cx + 170, 470], fill=(50, 54, 58), outline=LIME, width=5); d.text((cx - 95, 330), "CLOUD", font=F(60), fill=WHITE)
         d.text((cx - 175, 480), "Series S settings", font=F(38), fill=LIME)
         d.rounded_rectangle([cx - 200, 780, cx + 200, 920], 18, fill=(50, 54, 58), outline=WHITE, width=4); d.text((cx - 150, 820), "XBOX ONE", font=F(64), fill=WHITE)
@@ -83,13 +90,13 @@ def render(seg, k, n):
             yy = 540 + ((p * 2 + j / 3) % 1) * 220; d.ellipse([cx - 14, yy - 14, cx + 14, yy + 14], fill=LIME)
         caption(d, seg["caption"], y=1020); return im
     if kind == "bars":
-        im, d = bg(p, seg)
+        im, d = bg(p, seg, underlay)
         for j in range(5):
             on = (k // 6 + j) % 5 < 3; h = 70 + j * 70
             d.rectangle([150 + j * 90, 800 - h, 210 + j * 90, 800], fill=LIME if on else (70, 74, 78))
         caption(d, seg["caption"], y=950); return im
     if kind == "end":
-        im, d = bg(p, seg)
+        im, d = bg(p, seg, underlay)
         for i, l in enumerate(seg["lines"]):
             f = F(78 if i != 1 else 70); tw = d.textlength(l, font=f); off = int(30 * max(0, 1 - k / 8 + i * 0.3))
             d.text(((W - tw) / 2, 330 + i * 120 + off), l, font=f, fill=LIME if i == 1 else WHITE, stroke_width=4, stroke_fill=(0, 0, 0))
@@ -98,6 +105,26 @@ def render(seg, k, n):
         d.text((60, 1120), "Sources: Xbox Wire, Rockstar Newswire", font=F(28), fill=(170, 175, 180))
         return im
     raise ValueError(kind)
+
+def supporting_frames(seg, n):
+    names = seg.get("underlay_clips") or []
+    if not names:
+        return [None] * n
+    out = []
+    for idx, name in enumerate(names):
+        target = round(n * (idx + 1) / len(names))
+        count = target - len(out)
+        if count <= 0:
+            continue
+        try:
+            # Every visual beat is real source footage at native speed.
+            frames = clip_frames(name, count)
+        except (AssertionError, OSError, ValueError) as e:
+            print(f"underlay {name} not usable ({e}); animated image fallback", file=sys.stderr)
+            frames = [None] * count
+        out.extend(frames)
+    assert len(out) == n
+    return out
 
 def main():
     enc = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
@@ -109,7 +136,9 @@ def main():
         if seg["kind"] == "clip":
             for im in clip_frames(seg["clip"], n): d = ImageDraw.Draw(im); caption(d, seg["caption"]); d.text((24, 24), "Official Rockstar clip", font=F(26), fill=WHITE, stroke_width=2, stroke_fill=(0, 0, 0)); enc.stdin.write(im.tobytes())
         else:
-            for k in range(n): enc.stdin.write(render(seg, k, n).tobytes())
+            underlays = supporting_frames(seg, n)
+            for k in range(n):
+                enc.stdin.write(render(seg, k, n, underlays[k]).tobytes())
         total = b
     enc.stdin.close(); assert enc.wait() == 0; print("wrote", O["file"], total, "frames")
 main()
