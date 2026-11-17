@@ -78,6 +78,7 @@ function News() {
   const [voiceSec, setVoiceSec] = useState<number | null>(null);
   useEffect(() => { setVoiceSec(null); if (!voice) return; const el = new Audio(); el.onloadedmetadata = () => setVoiceSec(Number.isFinite(el.duration) ? el.duration : null); el.src = voice.url; }, [voice?.url]);
   const plan = planTimeline(shots, media.map((m) => (m ? { video: m.video, catalog: m.name.startsWith("Rockstar"), duration: m.duration } : null)), voiceSec);
+  const recRef = useRef<MediaRecorder | null>(null);
   const busyRef = useRef(false); const [busy, setBusy] = useState(false);
   const ready = approved && allowed && media.every((m) => m?.state === "ok") && pilotValid(shots) && !plan.errors.length && (!voice || voiceSec != null) && !busy;
 
@@ -123,7 +124,9 @@ function News() {
 
   async function play(record: boolean) {
     if (busyRef.current) return; busyRef.current = true; setBusy(true);
-    try { await playInner(record); } catch (e) { setStatus(`Остановлено: ${e instanceof Error ? e.message : String(e)}`); } finally { busyRef.current = false; setBusy(false); }
+    try { await playInner(record); } catch (e) {
+      if (recRef.current && recRef.current.state !== "inactive") recRef.current.stop();
+      audio.current?.el.pause(); els.current.forEach((el) => { if (el instanceof HTMLVideoElement) el.pause(); }); setStatus(`Остановлено: ${e instanceof Error ? e.message : String(e)}`); } finally { recRef.current = null; busyRef.current = false; setBusy(false); }
   }
   async function decodeAll(strict: boolean) {
     await Promise.all(els.current.map((el, i) => { if (!el) { if (strict) throw new Error(`шот ${i + 1}: нет материала`); return; }
@@ -135,6 +138,7 @@ function News() {
     setOut(null);
     if (record && plan.errors.length) throw new Error(plan.errors.join("; "));
     setStatus("Жду декодирования всех материалов…"); await decodeAll(record);
+    draw(0, 0); // first frame is on the canvas before recording/audio start
     const a = voiceNode();
     if (a) { await a.ctx.resume(); a.el.currentTime = 0; }
     let rec: MediaRecorder | null = null; const chunks: Blob[] = [];
@@ -145,7 +149,7 @@ function News() {
       const stream = canvas.current!.captureStream(30);
       if (a) a.dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
       rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8e6 });
-      rec.ondataavailable = (e) => chunks.push(e.data); rec.start();
+      rec.ondataavailable = (e) => chunks.push(e.data); recRef.current = rec; rec.start();
     }
     if (a) { try { await a.el.play(); } catch (e) { rec?.stop(); throw new Error(`озвучка не воспроизводится (${(e as Error).message}) — немой ролик не сохраняю`); } }
     for (let i = 0; i < shots.length; i++) {

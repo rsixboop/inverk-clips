@@ -24,13 +24,15 @@ export const CATALOG: CatalogAsset[] = [
 ];
 export const assetUrl = (a: CatalogAsset) => `${BASE}${a.file}?akim=1&imdensity=1&imwidth=3840`;
 export const findAsset = (id: string) => CATALOG.find((a) => a.id === id);
-/** Pick a distinct asset per shot by keyword overlap with text+material. */
-export function pickAssets(shots: { text: string; material: string; brief?: string }[]): string[] {
+const hasWord = (text: string, tag: string) => new RegExp(`\\b${tag.replace(/[^a-z0-9 ]/g, "")}\\b`).test(text);
+/** Pick a distinct asset per shot by whole-word tag matches; the visual brief weighs 3x. Evidence shots and zero matches stay empty. */
+export function pickAssets(shots: { text: string; material: string; brief?: string; role?: string }[]): string[] {
   const used = new Set<string>();
   return shots.map((s) => {
-    const words = (s.text + " " + s.material + " " + (s.brief ?? "")).toLowerCase();
+    if (s.role === "evidence") return "";
+    const brief = (s.brief ?? "").toLowerCase(), rest = (s.text + " " + s.material).toLowerCase();
     const best = CATALOG.filter((a) => !used.has(a.id))
-      .map((a) => ({ a, score: a.tags.filter((t) => words.includes(t)).length }))
+      .map((a) => ({ a, score: a.tags.reduce((n, t) => n + (hasWord(brief, t) ? 3 : 0) + (hasWord(rest, t) ? 1 : 0), 0) }))
       .sort((x, y) => y.score - x.score)[0];
     if (!best || best.score === 0) return ""; // no match: leave empty, never a random topical photo
     used.add(best.a.id); return best.a.id;
