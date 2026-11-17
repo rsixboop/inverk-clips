@@ -1,8 +1,8 @@
 {
-  "title": "GTA VI on Xbox One via cloud — pacing v3",
-  "provenance": "Existing verified script and Kokoro voice reused; native-speed Rockstar source footage behind compact evidence overlays; no new AI media calls",
+  "title": "GTA VI Xbox Cloud — rhythmic cut V4",
+  "provenance": "V4: same existing audio + licensed-source illustration, 14 explicit editorial cuts, no full-frame cards or AI calls",
   "output": {
-    "file": "public/gta6_cloud_v3.mp4",
+    "file": "public/gta6_cloud_v4.mp4",
     "w": 720,
     "h": 1280,
     "fps": 30,
@@ -22,177 +22,201 @@
     {
       "t": [
         0,
-        2.9
+        1.6
       ],
-      "kind": "title",
-      "bg": "public/gta6-shorts-assets/vice_city_14.jpg",
-      "lines": [
-        "XBOX ONE",
-        "+ GTA VI",
-        "+ CLOUD"
-      ],
-      "role": "illustration",
+      "kind": "beat",
+      "caption": "GTA VI ON XBOX ONE?",
       "underlay_clips": [
         "jason",
         "lucia"
-      ]
-    },
-    {
-      "t": [
-        2.9,
-        3.9
       ],
-      "kind": "clip",
-      "clip": "jason",
-      "caption": "THE ANSWER: |YES|",
+      "bg": "public/gta6-shorts-assets/vice_city_14.jpg",
       "role": "illustration"
     },
     {
       "t": [
-        3.9,
-        5.95
+        1.6,
+        3.2
       ],
-      "kind": "quote",
-      "role": "evidence",
-      "quote": "playable on day one through XBOX Cloud Gaming on XBOX One",
-      "source": "Xbox Wire · Nov 10, 2026",
-      "bg": "public/gta6-shorts-assets/vice_city_14.jpg",
+      "kind": "beat",
+      "caption": "YES — VIA THE CLOUD",
+      "underlay_clips": [
+        "lucia",
+        "dre"
+      ],
+      "bg": "public/gta6-shorts-assets/jason_and_lucia_02.jpg",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        3.2,
+        4.8
+      ],
+      "kind": "beat",
+      "caption": "XBOX WIRE CONFIRMS IT",
       "underlay_clips": [
         "dre",
         "cal"
-      ]
-    },
-    {
-      "t": [
-        5.95,
-        6.95
       ],
-      "kind": "clip",
-      "clip": "dre",
-      "caption": "|XBOX CLOUD| GAMING",
-      "role": "illustration"
-    },
-    {
-      "t": [
-        6.95,
-        9.2
-      ],
-      "kind": "diagram",
-      "bg": "public/gta6-shorts-assets/vice_city_01.jpg",
-      "caption": "|SERIES S| GRAPHICS",
+      "bg": "public/gta6-shorts-assets/vice_city_14.jpg",
       "role": "illustration",
+      "source_label": "Xbox Wire · Nov 10, 2026"
+    },
+    {
+      "t": [
+        4.8,
+        6.4
+      ],
+      "kind": "beat",
+      "caption": "NO NEW HARDWARE",
       "underlay_clips": [
         "cal",
-        "dimez"
-      ]
-    },
-    {
-      "t": [
-        9.2,
-        10.2
+        "boobie"
       ],
-      "kind": "clip",
-      "clip": "cal",
-      "caption": "|SERIES S| SETTINGS",
+      "bg": "public/gta6-shorts-assets/vice_city_01.jpg",
       "role": "illustration"
     },
     {
       "t": [
-        10.2,
+        6.4,
+        8
+      ],
+      "kind": "beat",
+      "caption": "STREAM IT, DON'T INSTALL",
+      "underlay_clips": [
+        "dimez",
+        "lucia"
+      ],
+      "bg": "public/gta6-shorts-assets/vice_city_04.jpg",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        8,
+        9.6
+      ],
+      "kind": "beat",
+      "caption": "SERIES S VISUALS",
+      "underlay_clips": [
+        "cal",
+        "jason"
+      ],
+      "bg": "public/gta6-shorts-assets/vice_city_01.jpg",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        9.6,
         11.2
       ],
-      "kind": "clip",
-      "clip": "dimez",
-      "caption": "STREAMED, NOT |INSTALLED|",
+      "kind": "beat",
+      "caption": "IN THE CLOUD",
+      "underlay_clips": [
+        "raul",
+        "dimez"
+      ],
+      "bg": "public/gta6-shorts-assets/vice_city_11.jpg",
       "role": "illustration"
     },
     {
       "t": [
         11.2,
-        12.2
+        12.8
       ],
-      "kind": "clip",
-      "clip": "boobie",
-      "caption": "BUT...",
+      "kind": "beat",
+      "caption": "BUT THERE'S A CATCH",
+      "underlay_clips": [
+        "boobie",
+        "brian"
+      ],
+      "bg": "public/gta6-shorts-assets/vice_city_14.jpg",
       "role": "illustration"
     },
     {
       "t": [
-        12.2,
-        13.2
+        12.8,
+        14.4
       ],
-      "kind": "clip",
-      "clip": "raul",
-      "caption": "|CONNECTION| SPEED",
-      "role": "illustration"
-    },
-    {
-      "t": [
-        13.2,
-        15
-      ],
-      "kind": "quote",
-      "role": "evidence",
-      "quote": "connection speeds and other technical factors may influence game performance",
-      "source": "Rockstar Newswire",
-      "bg": "public/gta6-shorts-assets/jason_and_lucia_02.jpg",
+      "kind": "beat",
+      "caption": "YOUR INTERNET MATTERS",
       "underlay_clips": [
         "raul",
-        "lucia"
-      ]
-    },
-    {
-      "t": [
-        15,
-        16.4
+        "jason"
       ],
-      "kind": "clip",
-      "clip": "lucia",
-      "caption": "MAY DIFFER FROM |LOCAL| PLAY",
+      "bg": "public/gta6-shorts-assets/vice_city_02.jpg",
       "role": "illustration"
     },
     {
       "t": [
-        16.4,
-        17.4
+        14.4,
+        16
       ],
-      "kind": "bars",
-      "bg": "public/gta6-shorts-assets/vice_city_01.jpg",
-      "caption": "|LAG| CHANGES THINGS",
-      "role": "illustration",
+      "kind": "beat",
+      "caption": "ROCKSTAR: PERFORMANCE VARIES",
       "underlay_clips": [
-        "boobie"
-      ]
+        "dre",
+        "lucia"
+      ],
+      "bg": "public/gta6-shorts-assets/jason_and_lucia_02.jpg",
+      "role": "illustration",
+      "source_label": "Rockstar Newswire"
     },
     {
       "t": [
-        17.4,
-        18.4
+        16,
+        17.6
       ],
-      "kind": "clip",
-      "clip": "brian",
-      "caption": "WOULD YOU |STREAM| IT?",
+      "kind": "beat",
+      "caption": "LATENCY MATTERS",
+      "underlay_clips": [
+        "lucia",
+        "boobie"
+      ],
+      "bg": "public/gta6-shorts-assets/vice_city_07.jpg",
       "role": "illustration"
     },
     {
       "t": [
-        18.4,
-        22.2
+        17.6,
+        19.2
       ],
-      "kind": "end",
-      "bg": "public/gta6-shorts-assets/jason_and_lucia_02.jpg",
-      "lines": [
-        "WOULD YOU",
-        "STREAM GTA VI",
-        "ON XBOX ONE?"
+      "kind": "beat",
+      "caption": "STREAMING ≠ LOCAL PLAY",
+      "underlay_clips": [
+        "cal",
+        "raul"
       ],
-      "note": "Game sold separately. Cloud availability varies by market and device. Streaming from Nov 19, 1am ET.",
-      "role": "illustration",
+      "bg": "public/gta6-shorts-assets/vice_city_04.jpg",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        19.2,
+        20.8
+      ],
+      "kind": "beat",
+      "caption": "WOULD YOU PLAY IT?",
       "underlay_clips": [
         "brian",
+        "dimez"
+      ],
+      "bg": "public/gta6-shorts-assets/vice_city_16.jpg",
+      "role": "illustration"
+    },
+    {
+      "t": [
+        20.8,
+        22.2
+      ],
+      "kind": "beat",
+      "caption": "ON XBOX ONE?",
+      "underlay_clips": [
         "jason",
         "lucia"
-      ]
+      ],
+      "bg": "public/gta6-shorts-assets/jason_and_lucia_02.jpg",
+      "role": "illustration",
+      "source_label": "Sources: Xbox Wire · Rockstar Newswire"
     }
   ],
   "clip_sources": {
@@ -216,5 +240,5 @@
     "brian": 0.84
   },
   "crop_note": "crop_x = horizontal crop point (0 left..1 right) chosen per clip so faces stay in frame; scale preserves aspect, never stretched",
-  "background_note": "Static cards are replaced with readable text/diagrams layered over native-speed source footage in 1–2s visual beats; still backgrounds are fallback only."
+  "background_note": "Each beat is 1.4–1.6 sec; paired live Rockstar source clips per beat with animated still fallback. No full-screen slides."
 }
