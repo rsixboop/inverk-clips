@@ -158,19 +158,29 @@ def ensure_assets(requests:list[dict],style_id:str="vice-neon",budget_usd:float=
         # Regenerate only if style / semantic / quality changed. Failed variants
         # use incrementing suffixes, with no unbounded automatic retry.
         key=req["semantic_key"].lower().replace(" ","-").replace("_","-")
-        attempts=sum(a["semantic_key"]==req["semantic_key"] and a["style_signature"]==sig for a in index["assets"])
-        if attempts>=2: raise RuntimeError(f"No acceptable variant for {key} after 2 attempts; no paid retry")
-        ident=asset_id(key+"-"+str(attempts),sig)
-        folder=LIB/style_id/ident;folder.mkdir(parents=True,exist_ok=True)
-        image_path=folder/"plate.png"; video_path=folder/"motion.mp4"
-        prompt=prompt_for(req,style);mp=motion_prompt(req,style)
-        base={"id":ident,"semantic_key":req["semantic_key"],"intent":req["intent"],"style_id":style_id,
-              "style_signature":sig,"image_path":str(image_path.relative_to(ROOT)),
-              "video_path":str(video_path.relative_to(ROOT)),"status":"pending",
-              "reuse_count":0,"max_reuse":style["max_reuse"],
-              "quality":0,"prompt":prompt,"motion_prompt":mp,
-              "created_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())}
-        index["assets"].append(base);save(INDEX,index)
+        same=[a for a in index["assets"] if a["semantic_key"]==req["semantic_key"] and a["style_signature"]==sig]
+        pending=next((a for a in same if a.get("status")=="pending"),None)
+        # Resume an interrupted image/video job from its stored queue request IDs.
+        # Never create a second paid variation just because the first one is pending.
+        if pending:
+            base=pending
+            ident=base["id"]
+            image_path=ROOT/base["image_path"]; video_path=ROOT/base["video_path"]
+            prompt=base["prompt"]; mp=base["motion_prompt"]
+        else:
+            attempts=len(same)
+            if attempts>=2: raise RuntimeError(f"No acceptable variant for {key} after 2 attempts; no paid retry")
+            ident=asset_id(key+"-"+str(attempts),sig)
+            folder=LIB/style_id/ident;folder.mkdir(parents=True,exist_ok=True)
+            image_path=folder/"plate.png"; video_path=folder/"motion.mp4"
+            prompt=prompt_for(req,style);mp=motion_prompt(req,style)
+            base={"id":ident,"semantic_key":req["semantic_key"],"intent":req["intent"],"style_id":style_id,
+                  "style_signature":sig,"image_path":str(image_path.relative_to(ROOT)),
+                  "video_path":str(video_path.relative_to(ROOT)),"status":"pending",
+                  "reuse_count":0,"max_reuse":style["max_reuse"],
+                  "quality":0,"prompt":prompt,"motion_prompt":mp,
+                  "created_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())}
+            index["assets"].append(base);save(INDEX,index)
         try:
             if not image_path.exists():
                 result=queue(IMAGE_MODEL,{"prompt":prompt,"num_images":1,"aspect_ratio":"9:16","output_format":"png"},ident+"-image")
@@ -180,7 +190,15 @@ def ensure_assets(requests:list[dict],style_id:str="vice-neon",budget_usd:float=
             if not video_path.exists():
                 image_url=queue(IMAGE_MODEL,{"prompt":prompt,"num_images":1,"aspect_ratio":"9:16","output_format":"png"},ident+"-image")["images"][0]["url"]
                 result=queue(VIDEO_MODEL,{"prompt":mp,"image_url":image_url,"duration":"5","negative_prompt":"text, watermark, logo, deformed objects, morphing, blurry, distorted"},ident+"-motion")
-                download(result["video"]["url"],video_path)
+                raw=video_path.with_name("motion_source.mp4")
+                download(result["video"]["url"],raw)
+                # Normalize to a Git-trackable 720p vertical clip, preserving
+                # motion and making all reusable clips the same media format.
+                subprocess.run(["ffmpeg","-y","-nostdin","-v","error","-i",str(raw),
+                   "-vf","scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,setsar=1",
+                   "-an","-c:v","libx264","-preset","fast","-crf","25",
+                   "-maxrate","2600k","-bufsize","3900k","-pix_fmt","yuv420p",str(video_path)],check=True)
+                raw.unlink(missing_ok=True)
             ok,detail,length=video_quality(video_path)
             if not ok:raise RuntimeError("Animation QC failed: "+detail)
             base.update(status="auto_validated",quality=0.8,duration=length,technical_qc=detail,reuse_count=1)
