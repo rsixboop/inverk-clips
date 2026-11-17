@@ -12,7 +12,8 @@ CACHE = "/tmp/news-render-src"; os.makedirs(CACHE, exist_ok=True)
 
 def clip_frames(name, n):
     cx = P.get("crop_x", {}).get(name, 0.5)
-    path = f"{CACHE}/{name}.mp4"
+    local_path = f"public/gta6-media/c-{name}.mp4"
+    path = local_path if os.path.exists(local_path) else f"{CACHE}/{name}.mp4"
     if not os.path.exists(path): urllib.request.urlretrieve(P["clip_sources"][name], path)
     fr = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v", "-count_frames", "-show_entries", "stream=nb_read_frames,r_frame_rate", "-of", "csv=p=0", path], capture_output=True, text=True).stdout.strip().split(",")
     assert fr[0] == f"{FPS}/1", f"{name}: source fps {fr[0]} != {FPS} (would need resampling)"
@@ -139,6 +140,45 @@ def render_beat(seg, k, n, underlay=None):
         draw.text((48, H - 52), source, font=F(28), fill=(208, 214, 220, 255))
     return Image.alpha_composite(im.convert("RGBA"), overlay).convert("RGB")
 
+# V2-based editorial cut: footage and official screenshots stay full-screen,
+# short overlays only at factual beats. It deliberately does not use cards.
+_CINEMA = {}
+def cinema_frame(seg, k, n, motion=None):
+    p = k / max(1, n - 1)
+    if motion is not None:
+        im = motion.copy()
+    else:
+        path = seg["bg"]
+        if path not in _CINEMA:
+            _CINEMA[path] = Image.open(path).convert("RGB")
+        source = _CINEMA[path]
+        # Source images stay proportional; focus is selected per official screenshot.
+        s = max(W / source.width, H / source.height) * (1.04 + 0.045 * p)
+        rw, rh = math.ceil(source.width * s), math.ceil(source.height * s)
+        target = source.resize((rw, rh), Image.Resampling.BICUBIC)
+        focus = min(1.0, max(0.0, float(seg.get("focus_x", 0.5))))
+        x = round((rw - W) * min(1.0, max(0.0, focus + 0.035 * (p - 0.5))))
+        y = round((rh - H) / 2)
+        im = target.crop((x, y, x + W, y + H))
+    label = seg.get("caption", "").strip()
+    source_label = seg.get("source_label", "").strip()
+    if not label and not source_label: return im
+    # Light bottom fade for reading; no opaque slide or centered title card.
+    fade = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(fade)
+    for y in range(H - 485, H):
+        alpha = round(175 * ((y - (H - 485)) / 485) ** 1.2)
+        d.line([(0, y), (W, y)], fill=(0, 0, 0, alpha), width=1)
+    if label:
+        f = F(59 if len(label) >= 23 else 67)
+        lines = wrap(d, label, f, W - 100)[:2]
+        for j, line in enumerate(lines):
+            d.text((48, H - 270 + 77 * j), line, font=f, fill=WHITE, stroke_width=2, stroke_fill=(10, 10, 10, 110))
+        d.line([(48, H - 294), (140, H - 294)], fill=LIME, width=6)
+    if source_label:
+        d.text((48, H - 72), source_label, font=F(30), fill=LIME)
+    return Image.alpha_composite(im.convert("RGBA"), fade).convert("RGB")
+
 def supporting_frames(seg, n):
     names = seg.get("underlay_clips") or []
     if not names:
@@ -166,7 +206,16 @@ def main():
     total = 0
     for seg in P["segments"]:
         a = round(seg["t"][0] * FPS); b = round(seg["t"][1] * FPS); n = b - a; assert a == total, f"gap at {seg['t']}"
-        if seg["kind"] == "beat":
+        if seg["kind"] == "cinematic":
+            frames = []
+            if seg.get("clip"):
+                try:
+                    frames = clip_frames(seg["clip"], n)
+                except (AssertionError, OSError, ValueError) as e:
+                    print(f"cinematic clip {seg['clip']} unavailable ({e}); official still fallback", file=sys.stderr)
+            for k in range(n):
+                enc.stdin.write(cinema_frame(seg, k, n, frames[k] if frames else None).tobytes())
+        elif seg["kind"] == "beat":
             underlays = supporting_frames(seg, n)
             for k in range(n):
                 enc.stdin.write(render_beat(seg, k, n, underlays[k]).tobytes())
