@@ -125,15 +125,15 @@ def video_quality(path):
     differences=[ImageStat.Stat(ImageChops.difference(previews[i],previews[i+1])).mean for i in range(2)]
     motion=sum(sum(x)/3 for x in differences)/2
     return motion>1.6, f"motion={motion:.2f}",duration
-def reuse_score(entry,req,style_id,sig):
+def reuse_score(entry,req,style_id,sig,episode_id=""):
     if entry.get("semantic_key")!=req["semantic_key"]:return -1
     if entry.get("style_id")!=style_id or entry.get("style_signature")!=sig:return -1
     if entry.get("status")!="auto_validated":return -1
-    if entry.get("reuse_count",0)>=entry.get("max_reuse",4):return -1
+    if entry.get("reuse_count",0)>=entry.get("max_reuse",4) and episode_id not in entry.get("used_in_episodes",[]):return -1
     if not (ROOT/entry["video_path"]).exists():return -1
     if entry.get("quality",0)<0.73:return -1
     return 100+entry["quality"]*10-entry.get("reuse_count",0)*3
-def ensure_assets(requests:list[dict],style_id:str="vice-neon",budget_usd:float=BUDGET_USD,reset_usage=False):
+def ensure_assets(requests:list[dict],style_id:str="vice-neon",budget_usd:float=BUDGET_USD,episode_id:str=""):
     if len(requests)>MAX_ASSETS:raise ValueError(f"Max {MAX_ASSETS} assets per episode")
     presets=styles()
     if style_id not in presets:raise ValueError(f"Unknown style {style_id}")
@@ -144,11 +144,15 @@ def ensure_assets(requests:list[dict],style_id:str="vice-neon",budget_usd:float=
     for req in requests:
         if not all(req.get(k) for k in ("semantic_key","intent","scene","motion")):
             raise ValueError("Asset request missing semantic_key/intent/scene/motion")
-        candidates=sorted([(reuse_score(a,req,style_id,sig),a) for a in index["assets"]],
+        candidates=sorted([(reuse_score(a,req,style_id,sig,episode_id),a) for a in index["assets"]],
                           key=lambda x:x[0],reverse=True)
         best=next((a for score,a in candidates if score>=0 and a["id"] not in used),None)
         if best:
-            best["reuse_count"]=best.get("reuse_count",0)+1
+            if episode_id and episode_id not in best.get("used_in_episodes",[]):
+                best.setdefault("used_in_episodes",[]).append(episode_id)
+                best["reuse_count"]=best.get("reuse_count",0)+1
+            elif not episode_id:
+                best["reuse_count"]=best.get("reuse_count",0)+1
             best["last_used_on"]=time.strftime("%Y-%m-%d")
             save(INDEX,index);selected.append(best);used.add(best["id"])
             print("REUSE",req["semantic_key"],best["id"],flush=True)
@@ -201,7 +205,8 @@ def ensure_assets(requests:list[dict],style_id:str="vice-neon",budget_usd:float=
                 raw.unlink(missing_ok=True)
             ok,detail,length=video_quality(video_path)
             if not ok:raise RuntimeError("Animation QC failed: "+detail)
-            base.update(status="auto_validated",quality=0.8,duration=length,technical_qc=detail,reuse_count=1)
+            base.update(status="auto_validated",quality=0.8,duration=length,technical_qc=detail,reuse_count=1,
+                        used_in_episodes=[episode_id] if episode_id else [])
             index["total_generated"]+=1
             spent+=COST_IMAGE+COST_VIDEO
             selected.append(base);used.add(ident)
