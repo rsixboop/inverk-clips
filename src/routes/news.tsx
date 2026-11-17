@@ -234,14 +234,10 @@ function News() {
       </div>
       <div className="panel p-3 space-y-2">
         <div className="rounded-md border border-border p-2 space-y-1">
-          <b className="text-xs">GTA VI · до 212 ГБ</b>
-          <video controls playsInline preload="metadata" src="/gta6_212gb_news.mp4" className="w-full rounded bg-muted" />
-          <a href="/gta6_212gb_news.mp4" download="gta6_212gb_news.mp4" className="block text-xs text-primary underline">Скачать ролик 212 ГБ .mp4</a>
-        </div>
-        <div className="rounded-md border border-border p-2 space-y-1">
-          <b className="text-xs">Редакторский монтаж</b>
-          <video controls playsInline preload="metadata" src="/gta6_cloud_editorial.mp4" className="w-full rounded bg-muted" />
-          <a href="/gta6_cloud_editorial.mp4" download="gta6_cloud_editorial.mp4" className="block text-xs text-primary underline">Скачать редакторский монтаж .mp4</a>
+          <b className="text-xs">GTA VI · до 212 ГБ — улучшенный монтаж</b>
+          <video controls playsInline preload="metadata" src="/gta6_212gb_refined.mp4" className="w-full rounded bg-muted" />
+          <a href="/gta6_212gb_refined.mp4" download="gta6_212gb_refined.mp4" className="block text-xs text-primary underline">Скачать улучшенный ролик .mp4</a>
+          <p className="text-[11px] text-muted-foreground">Сравнить: <a href="/gta6_212gb_news.mp4" target="_blank" rel="noreferrer" className="underline">исходная версия 212 ГБ</a> · <a href="/gta6_cloud_editorial.mp4" target="_blank" rel="noreferrer" className="underline">предыдущий редакторский монтаж</a></p>
         </div>
         <p className="text-[11px] text-muted-foreground">Для сравнения: <a href="/gta6_cloud_v2.mp4" target="_blank" rel="noreferrer" className="underline">V2</a> · <a href="/gta6_cloud_v3.mp4" target="_blank" rel="noreferrer" className="underline">V3</a> · <a href="/gta6_cloud_v4.mp4" target="_blank" rel="noreferrer" className="underline">V4</a></p>
         <canvas ref={canvas} width={W} height={H} className="aspect-[9/16] w-full rounded bg-muted" />
