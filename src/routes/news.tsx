@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { pollNewsVoice, submitNewsVoice } from "@/lib/news-voice.functions";
 import { AppShell } from "@/components/studio/AppShell";
-import { CATALOG, CLIPS, findAsset, findClip, pickAssets } from "@/lib/news-catalog";
+import { CATALOG, CLIPS, findAsset, findClip, isCatalogUrl, mediaUrl, pickAssets } from "@/lib/news-catalog";
 import { findGtaNews, findNewswire, scriptFromArticle } from "@/lib/news-script.functions";
 import { planTimeline } from "@/lib/news-timeline";
 import { MEDIA_LIBRARY, NEWS_SOURCE, PILOT, pilotValid, totalSeconds, type Shot } from "@/lib/news-pilot";
@@ -29,7 +29,7 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, max: number) {
 function News() {
   const [shots, setShots] = useState<Shot[]>(PILOT);
   const [angle, setAngle] = useState("");
-  const [media, setMedia] = useState<Media[]>(() => pickAssets(PILOT).map((id) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
+  const [media, setMedia] = useState<Media[]>(() => pickAssets(PILOT).map((id) => { const a = findAsset(id); return a ? { url: mediaUrl(a.id), video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
   const [source, setSource] = useState(NEWS_SOURCE);
   const [found, setFound] = useState<{ title: string; url: string; date: string }[]>([]);
   const [news, setNews] = useState<{ title: string; url: string; snippet: string; date: string; official: boolean }[]>([]);
@@ -41,7 +41,7 @@ function News() {
   const search = async () => { setNw({ busy: true, msg: "Ищу на Rockstar Newswire…" }); try { const r = await findFn(); setFound(r.items); setNw({ busy: false, msg: r.error }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
   const makeScript = async () => { setNw({ busy: true, msg: "Читаю статью и пишу сценарий…" }); try { const r = await scriptFn({ data: { url: source } });
     const ns: Shot[] = r.shots.map((x) => ({ text: x.text, seconds: x.seconds, material: `Факт: «${x.fact}»`, caption: x.caption, fact: x.fact, brief: x.brief, role: x.role })); setShots(ns); setAngle(r.angle); setApproved(false); setVoice(null);
-    setMedia((m) => pickAssets(ns).map((id, k) => { const a = ns[k]!.role === "evidence" ? undefined : findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
+    setMedia((m) => pickAssets(ns).map((id, k) => { const a = ns[k]!.role === "evidence" ? undefined : findAsset(id); return a ? { url: mediaUrl(a.id), video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
     setNw({ busy: false, msg: "Сценарий готов. Проверьте и утвердите перед озвучкой." }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
   const [allowed, setAllowed] = useState(false);
   const [status, setStatus] = useState("");
@@ -96,10 +96,10 @@ function News() {
       .catch((e) => setState(src, "error", e instanceof Error && e.message ? e.message : "сеть")); return; }
     fetch(m.url).then(async (r) => { if (!r.ok) setState(m.url, "error", await r.text()); else { const i = new Image(); i.onload = () => setState(m.url, "ok"); i.onerror = () => setState(m.url, "error", "не декодируется"); i.src = m.url; } })
       .catch(() => setState(m.url, "error", "сеть")); }); }, [media]);
-  const autoPick = () => setMedia((m) => pickAssets(shots).map((id, k) => { const a = shots[k]!.role === "evidence" ? undefined : findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : m[k] && !m[k]!.url.startsWith("/api/rockstar-media/") ? m[k]! : null; }));
-  const pickCatalog = (i: number, id: string) => { const a = findAsset(id); if (a) setMedia((m) => m.map((x, k) => (k === i ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : x))); };
+  const autoPick = () => setMedia((m) => pickAssets(shots).map((id, k) => { const a = shots[k]!.role === "evidence" ? undefined : findAsset(id); return a ? { url: mediaUrl(a.id), video: false, name: `Rockstar: ${a.title}`, state: "loading" } : m[k] && !isCatalogUrl(m[k]!.url) ? m[k]! : null; }));
+  const pickCatalog = (i: number, id: string) => { const a = findAsset(id); if (a) setMedia((m) => m.map((x, k) => (k === i ? { url: mediaUrl(a.id), video: false, name: `Rockstar: ${a.title}`, state: "loading" } : x))); };
 
-  const pickClip = (i: number, id: string) => { const c = findClip(id); if (c) setMedia((m) => m.map((x, k) => (k === i ? { url: `/api/rockstar-media/${c.id}`, video: true, name: `Rockstar видео: ${c.title}`, state: "loading" } : x))); };
+  const pickClip = (i: number, id: string) => { const c = findClip(id); if (c) setMedia((m) => m.map((x, k) => (k === i ? { url: mediaUrl(c.id), video: true, name: `Rockstar видео: ${c.title}`, state: "loading" } : x))); };
   function draw(i: number, progress = 0) {
     const ctx = canvas.current!.getContext("2d")!, el = els.current[i];
     ctx.fillStyle = "#111"; ctx.fillRect(0, 0, W, H);

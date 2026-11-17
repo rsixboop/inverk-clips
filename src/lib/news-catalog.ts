@@ -54,3 +54,12 @@ export const CLIPS: CatalogClip[] = [
 ];
 export const clipUrl = (c: CatalogClip) => `${BASE}${c.file}`;
 export const findClip = (id: string) => CLIPS.find((c) => c.id === id);
+
+// Verified local copies (public/gta6-media, provenance in its README): images byte-identical originals,
+// clips re-encoded to 1080p, no audio, original fps/frame count. IDs not listed fall back to the remote proxy and show its real error.
+export const LOCAL_MEDIA: Record<string, string> = Object.fromEntries([
+  ...CATALOG.map((a) => [a.id, `/gta6-media/${a.id}.jpg`]),
+  ...CLIPS.map((c) => [c.id, `/gta6-media/${c.id}.mp4`]),
+]);
+export const mediaUrl = (id: string) => LOCAL_MEDIA[id] ?? `/api/rockstar-media/${id}`;
+export const isCatalogUrl = (u: string) => u.startsWith("/gta6-media/") || u.startsWith("/api/rockstar-media/");

@@ -15,3 +15,12 @@ describe("news catalog", () => {
   });
   it("only knows fixed IDs", () => { expect(findAsset("https://evil.com")).toBeUndefined(); expect(CATALOG.length).toBeGreaterThanOrEqual(4); });
 });
+
+import { existsSync } from "node:fs";
+import { CLIPS, LOCAL_MEDIA, mediaUrl } from "./news-catalog";
+describe("local media copies", () => {
+  it("every fixed ID has a local file", () => {
+    for (const id of [...CATALOG.map((a) => a.id), ...CLIPS.map((c) => c.id)]) { expect(LOCAL_MEDIA[id]).toBeTruthy(); expect(existsSync("public" + LOCAL_MEDIA[id])).toBe(true); }
+  });
+  it("unknown IDs never become local", () => { expect(mediaUrl("x")).toBe("/api/rockstar-media/x"); });
+});
