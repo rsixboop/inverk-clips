@@ -106,6 +106,39 @@ def render(seg, k, n, underlay=None):
         return im
     raise ValueError(kind)
 
+def render_beat(seg, k, n, underlay=None):
+    """V4: b-roll first. Short factual labels stay over footage; never cover the
+    screen with a standalone quote/card. Every beat has an explicit cut boundary."""
+    p = k / max(n - 1, 1)
+    if underlay is not None:
+        im = underlay.copy()
+    else:
+        # Distinct photo per beat, lightly animated rather than a static freeze.
+        im, _ = bg(p, seg, None)
+    # Text only occupies the lower third; top two-thirds show the scene.
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    for row in range(16):
+        y0 = H - 440 + row * 26
+        alpha = int(12 + row * 8)
+        draw.rectangle([0, y0, W, min(H, y0 + 27)], fill=(10, 13, 15, min(170, alpha)))
+    draw.rounded_rectangle([42, 76, 244, 121], radius=12, fill=(8, 10, 12, 180))
+    draw.text((58, 83), "GTA VI NEWS", font=F(25), fill=LIME)
+    label = seg.get("caption", "")
+    # Drop the legacy |highlight| delimiters for concise editorial typography.
+    label = label.replace("|", "").strip()
+    font = F(70 if len(label) < 26 else 59)
+    lines = wrap(draw, label, font, W - 90)[:3]
+    yy = H - 335 - 74 * (len(lines) - 1)
+    for line in lines:
+        draw.text((W / 2 - draw.textlength(line, font=font)/2, yy), line, font=font,
+                  fill=WHITE, stroke_fill=(0, 0, 0, 195), stroke_width=2)
+        yy += 80
+    source = seg.get("source_label")
+    if source:
+        draw.text((48, H - 52), source, font=F(28), fill=(208, 214, 220, 255))
+    return Image.alpha_composite(im.convert("RGBA"), overlay).convert("RGB")
+
 def supporting_frames(seg, n):
     names = seg.get("underlay_clips") or []
     if not names:
@@ -133,7 +166,11 @@ def main():
     total = 0
     for seg in P["segments"]:
         a = round(seg["t"][0] * FPS); b = round(seg["t"][1] * FPS); n = b - a; assert a == total, f"gap at {seg['t']}"
-        if seg["kind"] == "clip":
+        if seg["kind"] == "beat":
+            underlays = supporting_frames(seg, n)
+            for k in range(n):
+                enc.stdin.write(render_beat(seg, k, n, underlays[k]).tobytes())
+        elif seg["kind"] == "clip":
             for im in clip_frames(seg["clip"], n): d = ImageDraw.Draw(im); caption(d, seg["caption"]); d.text((24, 24), "Official Rockstar clip", font=F(26), fill=WHITE, stroke_width=2, stroke_fill=(0, 0, 0)); enc.stdin.write(im.tobytes())
         else:
             underlays = supporting_frames(seg, n)
