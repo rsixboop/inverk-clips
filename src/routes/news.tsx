@@ -55,7 +55,7 @@ function News() {
   async function genVoice() {
     const text = shots.map((s) => s.text).join(" ");
     let h = 0; for (const c of text) h = (h * 31 + c.charCodeAt(0)) | 0;
-    const key = `news-tts:${h}`;
+    const key = `news-tts:am_fenrir-v1:${h}`; // Include voice in dedupe key: old Michael audio must not be reused.
     setTts({ busy: true, msg: "" });
     let id = localStorage.getItem(key);
     if (id === "pending") { setTts({ busy: false, msg: "Прошлая отправка этого текста завершилась с неизвестным исходом — повтор заблокирован, чтобы не платить дважды. Проверьте fal или измените текст." }); return; }
