@@ -1,8 +1,8 @@
 {
-  "title": "GTA VI on Xbox One via cloud — test v2",
-  "provenance": "agent-assisted: narration from news-script.json (AI script, quotes verified verbatim); edit plan hand-written by the agent; no AI-generated imagery",
+  "title": "GTA VI on Xbox One via cloud — pacing v3",
+  "provenance": "Existing verified script and Kokoro voice reused; native-speed Rockstar source footage behind compact evidence overlays; no new AI media calls",
   "output": {
-    "file": "public/gta6_cloud_v2.mp4",
+    "file": "public/gta6_cloud_v3.mp4",
     "w": 720,
     "h": 1280,
     "fps": 30,
@@ -21,7 +21,7 @@
   "segments": [
     {
       "t": [
-        0.0,
+        0,
         2.9
       ],
       "kind": "title",
@@ -31,7 +31,11 @@
         "+ GTA VI",
         "+ CLOUD"
       ],
-      "role": "illustration"
+      "role": "illustration",
+      "underlay_clips": [
+        "jason",
+        "lucia"
+      ]
     },
     {
       "t": [
@@ -52,7 +56,11 @@
       "role": "evidence",
       "quote": "playable on day one through XBOX Cloud Gaming on XBOX One",
       "source": "Xbox Wire · Nov 10, 2026",
-      "bg": "public/gta6-shorts-assets/vice_city_14.jpg"
+      "bg": "public/gta6-shorts-assets/vice_city_14.jpg",
+      "underlay_clips": [
+        "dre",
+        "cal"
+      ]
     },
     {
       "t": [
@@ -72,7 +80,11 @@
       "kind": "diagram",
       "bg": "public/gta6-shorts-assets/vice_city_01.jpg",
       "caption": "|SERIES S| GRAPHICS",
-      "role": "illustration"
+      "role": "illustration",
+      "underlay_clips": [
+        "cal",
+        "dimez"
+      ]
     },
     {
       "t": [
@@ -117,17 +129,21 @@
     {
       "t": [
         13.2,
-        15.0
+        15
       ],
       "kind": "quote",
       "role": "evidence",
       "quote": "connection speeds and other technical factors may influence game performance",
       "source": "Rockstar Newswire",
-      "bg": "public/gta6-shorts-assets/jason_and_lucia_02.jpg"
+      "bg": "public/gta6-shorts-assets/jason_and_lucia_02.jpg",
+      "underlay_clips": [
+        "raul",
+        "lucia"
+      ]
     },
     {
       "t": [
-        15.0,
+        15,
         16.4
       ],
       "kind": "clip",
@@ -143,7 +159,10 @@
       "kind": "bars",
       "bg": "public/gta6-shorts-assets/vice_city_01.jpg",
       "caption": "|LAG| CHANGES THINGS",
-      "role": "illustration"
+      "role": "illustration",
+      "underlay_clips": [
+        "boobie"
+      ]
     },
     {
       "t": [
@@ -168,7 +187,12 @@
         "ON XBOX ONE?"
       ],
       "note": "Game sold separately. Cloud availability varies by market and device. Streaming from Nov 19, 1am ET.",
-      "role": "illustration"
+      "role": "illustration",
+      "underlay_clips": [
+        "brian",
+        "jason",
+        "lucia"
+      ]
     }
   ],
   "clip_sources": {
@@ -184,13 +208,13 @@
   "crop_x": {
     "jason": 0.87,
     "lucia": 0.54,
-    "cal": 1.0,
-    "boobie": 0.0,
+    "cal": 1,
+    "boobie": 0,
     "dimez": 0.73,
     "dre": 0.61,
     "raul": 0.73,
     "brian": 0.84
   },
   "crop_note": "crop_x = horizontal crop point (0 left..1 right) chosen per clip so faces stay in frame; scale preserves aspect, never stretched",
-  "background_note": "title/diagram/bars/end cards sit on darkened official Rockstar screenshots (slow zoom), not plain black"
+  "background_note": "Static cards are replaced with readable text/diagrams layered over native-speed source footage in 1–2s visual beats; still backgrounds are fallback only."
 }
