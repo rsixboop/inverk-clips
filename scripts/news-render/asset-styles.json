@@ -1,0 +1,53 @@
+{
+  "default": "vice-neon",
+  "presets": {
+    "vice-neon": {
+      "label": "Vice Neon Editorial",
+      "version": 1,
+      "palette": [
+        "deep purple",
+        "electric magenta",
+        "turquoise",
+        "sunset orange"
+      ],
+      "materials": "premium glossy translucent acrylic, satin metal, pearlescent glass",
+      "environment": "tropical after-dark city glow with palm silhouettes, purple-blue haze and cinematic reflections",
+      "lighting": "magenta cyan edge lighting, warm neon reflections, professional product studio lighting",
+      "motion": "subtle realistic mechanical action, convincing spatial depth, smooth tracking camera, no random morphing",
+      "negative": "no crude icon, no clipart, no flat svg UI, no fake screenshot, no text, no logos, no watermark, no pixelated texture",
+      "max_reuse": 4
+    },
+    "nordic-fantasy": {
+      "label": "Nordic Fantasy",
+      "version": 1,
+      "palette": [
+        "frost blue",
+        "slate",
+        "iron black",
+        "silver"
+      ],
+      "materials": "chiseled cold stone, weathered wrought iron, frost-covered carved surfaces",
+      "environment": "misty snowy northern mountains, ancient stonework and understated luminous runes",
+      "lighting": "cold moonlight, warm torch accents, textured cinematic shadows",
+      "motion": "heavy deliberate mechanics, drifting snow, slow magical frost movement",
+      "negative": "no cartoon, no comic symbols, no GTA branding, no text, no watermark",
+      "max_reuse": 4
+    },
+    "clean-tech": {
+      "label": "Clean Tech",
+      "version": 1,
+      "palette": [
+        "ice white",
+        "charcoal",
+        "teal",
+        "electric blue"
+      ],
+      "materials": "refined anodized aluminum, matte ceramic, clear glass",
+      "environment": "understated modern technology studio with high contrast negative space",
+      "lighting": "clean softbox with precise specular highlights",
+      "motion": "clean precise product motion, gently flowing data light",
+      "negative": "no cartoon UI, no random logos, no text, no watermark",
+      "max_reuse": 4
+    }
+  }
+}
