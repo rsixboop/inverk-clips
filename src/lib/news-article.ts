@@ -18,7 +18,8 @@ export function validateScript(out: unknown, article: string): ScriptResult {
     const text = String(s?.text ?? "").trim(), fact = String(s?.fact ?? "").trim();
     const caption = String(s?.caption ?? "").trim(), brief = String(s?.brief ?? "").trim();
     if (!text || text.length > 140) throw new Error(`Шот ${i + 1}: некорректный текст`);
-    if (!caption || caption.length > 48) throw new Error(`Шот ${i + 1}: некорректная подпись`);
+    // A missing caption is intentional: showing the visual without a teaser is often better.
+    if (caption.length > 48) throw new Error(`Шот ${i + 1}: слишком длинная подпись`);
     if (!brief || brief.length > 200) throw new Error(`Шот ${i + 1}: нет visual brief`);
     if (s?.role !== "evidence" && s?.role !== "illustration") throw new Error(`Шот ${i + 1}: роль должна быть evidence/illustration`);
     if (fact.length < 12 || !a.includes(norm(fact))) throw new Error(`Шот ${i + 1}: факт не найден в статье — сценарий отклонён`);
