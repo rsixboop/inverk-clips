@@ -1,0 +1,50 @@
+{
+  "id": "gta6-ps5-immersive-features",
+  "source_url": "https://www.rockstargames.com/newswire/article/89834o94713o21/pre-load-grand-theft-auto-vi-now",
+  "style": "vice-neon",
+  "output": "public/gta6_ps5_5_generated_assets.mp4",
+  "duration": 19.57,
+  "assets": [
+    {
+      "id": "fec87cb98d459c",
+      "semantic_key": "ps5-immersive-feature-reveal",
+      "video": "public/generated-assets/vice-neon/fec87cb98d459c/motion.mp4",
+      "qc": "motion=32.20",
+      "narration": "GTA Six on PlayStation Five has three upgrades beyond graphics.",
+      "at": 0.0
+    },
+    {
+      "id": "4faa7250095872",
+      "semantic_key": "controller-haptic-feedback",
+      "video": "public/generated-assets/vice-neon/4faa7250095872/motion.mp4",
+      "qc": "motion=23.86",
+      "narration": "DualSense haptics bring the action right into your hands.",
+      "at": 4.72
+    },
+    {
+      "id": "676fed602954bb",
+      "semantic_key": "spatial-audio-3d-city",
+      "video": "public/generated-assets/vice-neon/676fed602954bb/motion.mp4",
+      "qc": "motion=37.38",
+      "narration": "Tempest three-D audio gives the whole city a sense of space.",
+      "at": 8.31
+    },
+    {
+      "id": "9c87d8bd07fcd1",
+      "semantic_key": "fast-loading-world-transition",
+      "video": "public/generated-assets/vice-neon/9c87d8bd07fcd1/motion.mp4",
+      "qc": "motion=50.77",
+      "narration": "And faster loading means less waiting and more time in Leonida.",
+      "at": 12.09
+    },
+    {
+      "id": "d00452c9e7f9bb",
+      "semantic_key": "ps5-immersive-feature-triad",
+      "video": "public/generated-assets/vice-neon/d00452c9e7f9bb/motion.mp4",
+      "qc": "motion=24.26",
+      "narration": "What would impress you most: the feel, the sound, or the speed?",
+      "at": 15.93
+    }
+  ],
+  "estimated_new_asset_spend_usd": 0.78
+}

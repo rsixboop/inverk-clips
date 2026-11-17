@@ -1,0 +1,5 @@
+file '/dev-server/scripts/news-render/episode-state/gta6-ps5-immersive-features/shot_00.mp4'
+file '/dev-server/scripts/news-render/episode-state/gta6-ps5-immersive-features/shot_01.mp4'
+file '/dev-server/scripts/news-render/episode-state/gta6-ps5-immersive-features/shot_02.mp4'
+file '/dev-server/scripts/news-render/episode-state/gta6-ps5-immersive-features/shot_03.mp4'
+file '/dev-server/scripts/news-render/episode-state/gta6-ps5-immersive-features/shot_04.mp4'
