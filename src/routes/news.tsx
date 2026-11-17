@@ -227,6 +227,11 @@ function News() {
       </div>
       <div className="panel p-3 space-y-2">
         <div className="rounded-md border border-border p-2 space-y-1">
+          <b className="text-xs">GTA VI · до 212 ГБ</b>
+          <video controls playsInline preload="metadata" src="/gta6_212gb_news.mp4" className="w-full rounded bg-muted" />
+          <a href="/gta6_212gb_news.mp4" download="gta6_212gb_news.mp4" className="block text-xs text-primary underline">Скачать ролик 212 ГБ .mp4</a>
+        </div>
+        <div className="rounded-md border border-border p-2 space-y-1">
           <b className="text-xs">Редакторский монтаж</b>
           <video controls playsInline preload="metadata" src="/gta6_cloud_editorial.mp4" className="w-full rounded bg-muted" />
           <a href="/gta6_cloud_editorial.mp4" download="gta6_cloud_editorial.mp4" className="block text-xs text-primary underline">Скачать редакторский монтаж .mp4</a>
