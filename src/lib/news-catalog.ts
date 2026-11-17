@@ -25,14 +25,14 @@ export const CATALOG: CatalogAsset[] = [
 export const assetUrl = (a: CatalogAsset) => `${BASE}${a.file}?akim=1&imdensity=1&imwidth=3840`;
 export const findAsset = (id: string) => CATALOG.find((a) => a.id === id);
 /** Pick a distinct asset per shot by keyword overlap with text+material. */
-export function pickAssets(shots: { text: string; material: string }[]): string[] {
+export function pickAssets(shots: { text: string; material: string; brief?: string }[]): string[] {
   const used = new Set<string>();
   return shots.map((s) => {
-    const words = (s.text + " " + s.material).toLowerCase();
+    const words = (s.text + " " + s.material + " " + (s.brief ?? "")).toLowerCase();
     const best = CATALOG.filter((a) => !used.has(a.id))
       .map((a) => ({ a, score: a.tags.filter((t) => words.includes(t)).length }))
       .sort((x, y) => y.score - x.score)[0];
-    if (!best) return "";
+    if (!best || best.score === 0) return ""; // no match: leave empty, never a random topical photo
     used.add(best.a.id); return best.a.id;
   });
 }

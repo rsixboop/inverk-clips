@@ -25,12 +25,12 @@ export const scriptFromArticle = createServerFn({ method: "POST" }).middleware([
     if (!/grand theft auto vi|gta vi/i.test(text) || text.length < 400) throw new Error("В статье не найден текст о GTA VI — сценарий не создан");
     const { generateResponse } = await import("@lovable.dev/ai-gateway");
     const r: any = await generateResponse({ model: "openai/gpt-6-astra",
-      instructions: "You write a 4-shot English TikTok news script (hook, fact, fact, question). Use ONLY facts from the article. For each shot return text (<=110 chars) and fact: an EXACT verbatim quote (12-160 chars) copied from the article supporting it. JSON: {\"shots\":[{\"text\":\"\",\"fact\":\"\"}]}",
+      instructions: "You are a GTA VI news editor. Use ONLY facts from the article. First list 3 possible angles and score each 1-5 on novelty, usefulness to the viewer and visual provability; pick the best. If no angle scores >=3 on novelty and usefulness, return {\"reject\":true,\"reason\":\"...\"}. Never invent sensations. Otherwise write a 4-shot English TikTok script (hook, fact, fact, question). Per shot: text = narration (<=110 chars); caption = short on-screen label (<=40 chars, separate from narration); fact = EXACT verbatim quote (12-160 chars) from the article; brief = concrete visual (<=160 chars, e.g. 'official screenshot of Vice City skyline'); role = 'evidence' only if the visual itself proves the fact (e.g. screenshot of the article), else 'illustration'. JSON: {\"angles\":[{\"angle\":\"\",\"score\":0}],\"angle\":\"\",\"shots\":[{\"text\":\"\",\"caption\":\"\",\"fact\":\"\",\"brief\":\"\",\"role\":\"illustration\"}]}",
       input: [{ role: "user", content: `ARTICLE:\n${text}\nReturn JSON.` }], text: { format: { type: "json_object" } } } as any);
     let out: string | undefined = r?.output_text;
     if (!out) for (const o of r?.output ?? []) for (const x of o?.content ?? []) if (x?.type === "output_text") out = x.text;
     let j: any; try { j = JSON.parse(out ?? ""); } catch { throw new Error("ИИ вернул некорректный ответ"); }
-    return { url: data.url, shots: validateScript(j?.shots, text) };
+    return { url: data.url, ...validateScript(j, text) };
   });
 
 // Broad recent GTA VI news (any site). Non-official sources are flagged; nothing is generated from snippets.

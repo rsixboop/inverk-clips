@@ -27,6 +27,7 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, max: number) {
 
 function News() {
   const [shots, setShots] = useState<Shot[]>(PILOT);
+  const [angle, setAngle] = useState("");
   const [media, setMedia] = useState<Media[]>(() => pickAssets(PILOT).map((id) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
   const [source, setSource] = useState(NEWS_SOURCE);
   const [found, setFound] = useState<{ title: string; url: string; date: string }[]>([]);
@@ -38,8 +39,8 @@ function News() {
   const findFn = useServerFn(findNewswire), scriptFn = useServerFn(scriptFromArticle);
   const search = async () => { setNw({ busy: true, msg: "Ищу на Rockstar Newswire…" }); try { const r = await findFn(); setFound(r.items); setNw({ busy: false, msg: r.error }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
   const makeScript = async () => { setNw({ busy: true, msg: "Читаю статью и пишу сценарий…" }); try { const r = await scriptFn({ data: { url: source } });
-    const ns = r.shots.map((x) => ({ text: x.text, seconds: x.seconds, material: `Факт: «${x.fact}»` })); setShots(ns); setApproved(false); setVoice(null);
-    setMedia((m) => pickAssets(ns).map((id, k) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : m[k] ?? null; }));
+    const ns: Shot[] = r.shots.map((x) => ({ text: x.text, seconds: x.seconds, material: `Факт: «${x.fact}»`, caption: x.caption, fact: x.fact, brief: x.brief, role: x.role })); setShots(ns); setAngle(r.angle); setApproved(false); setVoice(null);
+    setMedia((m) => pickAssets(ns).map((id, k) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
     setNw({ busy: false, msg: "Сценарий готов. Проверьте и утвердите перед озвучкой." }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
   const [allowed, setAllowed] = useState(false);
   const [status, setStatus] = useState("");
@@ -88,7 +89,7 @@ function News() {
       .catch((e) => setState(src, "error", e instanceof Error && e.message ? e.message : "сеть")); return; }
     fetch(m.url).then(async (r) => { if (!r.ok) setState(m.url, "error", await r.text()); else { const i = new Image(); i.onload = () => setState(m.url, "ok"); i.onerror = () => setState(m.url, "error", "не декодируется"); i.src = m.url; } })
       .catch(() => setState(m.url, "error", "сеть")); }); }, [media]);
-  const autoPick = () => setMedia((m) => pickAssets(shots).map((id, k) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : m[k] ?? null; }));
+  const autoPick = () => setMedia((m) => pickAssets(shots).map((id, k) => { const a = findAsset(id); return a ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : m[k] && !m[k]!.url.startsWith("/api/rockstar-media/") ? m[k]! : null; }));
   const pickCatalog = (i: number, id: string) => { const a = findAsset(id); if (a) setMedia((m) => m.map((x, k) => (k === i ? { url: `/api/rockstar-media/${a.id}`, video: false, name: `Rockstar: ${a.title}`, state: "loading" } : x))); };
 
   const pickClip = (i: number, id: string) => { const c = findClip(id); if (c) setMedia((m) => m.map((x, k) => (k === i ? { url: `/api/rockstar-media/${c.id}`, video: true, name: `Rockstar видео: ${c.title}`, state: "loading" } : x))); };
@@ -98,7 +99,7 @@ function News() {
     if (el) { const sw = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth, sh = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
       if (sw && sh) { const s = Math.max(W / sw, H / sh) * (1.035 + 0.075 * progress); const dx = (W - sw * s) / 2 + (i % 2 ? 1 : -1) * (progress - 0.5) * 16; ctx.drawImage(el, dx, (H - sh * s) / 2, sw * s, sh * s); } }
     ctx.font = "bold 64px sans-serif"; ctx.textAlign = "center";
-    const lines = wrap(ctx, shots[i]!.text, W - 160), y0 = H - 520;
+    const lines = wrap(ctx, shots[i]!.caption || shots[i]!.text, W - 160), y0 = H - 520;
     ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(60, y0 - 80, W - 120, lines.length * 80 + 60);
     ctx.fillStyle = "#fff"; lines.forEach((l, k) => ctx.fillText(l, W / 2, y0 + k * 80));
     ctx.font = "32px sans-serif"; ctx.fillText("Source: Rockstar Newswire", W / 2, H - 140);
@@ -156,6 +157,7 @@ function News() {
           {news.map((f) => <label key={f.url} className={`block rounded border p-2 ${source === f.url ? "border-primary" : "border-border"}`}><input type="radio" className="mr-1" checked={source === f.url} onChange={() => setSource(f.url)} /><b>{f.title}</b> {f.date && <span className="text-muted-foreground">{f.date}</span>}
             {!f.official && <span className="ml-1 text-destructive">проверить первоисточник</span>}<p className="text-muted-foreground">{f.snippet}</p><a href={f.url} target="_blank" rel="noreferrer" className="break-all text-primary underline">{f.url}</a></label>)}
           <p>Источник: <a href={source} target="_blank" rel="noreferrer" className="break-all text-primary underline">{source}</a> — тексты шотов ниже редактируйте вручную; сценарий по сниппету не создаётся.</p>
+          {angle && <p>Угол подачи: <b>{angle}</b></p>}
           <button disabled={nw.busy} onClick={search} className="h-7 rounded-md border border-border px-2">Только Rockstar Newswire</button>
           {found.map((f) => <label key={f.url} className="flex gap-2"><input type="radio" checked={source === f.url} onChange={() => setSource(f.url)} />{f.title} {f.date && <span className="text-muted-foreground">{f.date}</span>}</label>)}
           <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="https://www.rockstargames.com/newswire/article/…" className="h-7 w-full rounded border border-input bg-muted px-2" />
@@ -170,7 +172,9 @@ function News() {
             <div className="flex items-center gap-2"><b>Шот {i + 1}</b>
               <input type="number" min={2} max={10} step={0.5} value={s.seconds} onChange={(e) => upd(i, { seconds: Number(e.target.value) })} className="h-7 w-16 rounded border border-input bg-muted px-1 text-xs" /> с</div>
             <textarea value={s.text} onChange={(e) => upd(i, { text: e.target.value })} rows={2} className="w-full rounded border border-input bg-muted p-2 text-xs" />
+            <input value={s.caption ?? ""} placeholder="Экранная подпись (пусто = текст озвучки)" onChange={(e) => upd(i, { caption: e.target.value })} className="w-full rounded border border-input bg-muted p-1 text-xs" />
             <div className="text-xs text-muted-foreground">Материал: {s.material}</div>
+            {s.brief && <div className="text-xs text-muted-foreground">Визуал: {s.brief} · <b>{s.role === "evidence" ? "доказательство" : "иллюстрация (не доказательство)"}</b></div>}
             <input type="file" accept="video/mp4,image/*" className="text-xs" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return;
               setMedia((m) => m.map((x, k) => (k === i ? { url: URL.createObjectURL(f), video: f.type.startsWith("video"), name: f.name, state: "ok" } : x))); }} />
             <select className="h-7 rounded border border-input bg-muted text-xs" value="" onChange={(e) => pickCatalog(i, e.target.value)}><option value="">Скриншот Rockstar…</option>{CATALOG.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}</select>

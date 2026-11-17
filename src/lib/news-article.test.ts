@@ -7,9 +7,15 @@ describe("news article", () => {
     expect(isNewswireUrl("https://evil.com/newswire/article/x")).toBe(false);
     expect(isNewswireUrl("http://www.rockstargames.com/newswire/article/x")).toBe(false);
   });
-  it("rejects facts absent from article", () => {
-    const ok = [0, 1, 2, 3].map(() => ({ text: "t", fact: "targets 30 frames per second" }));
-    expect(validateScript(ok, art)).toHaveLength(4);
-    expect(() => validateScript([...ok.slice(0, 3), { text: "t", fact: "runs at 60 FPS on PS5 Pro" }], art)).toThrow(/не найден/);
+  const sh = (fact: string) => ({ text: "t", caption: "30 FPS", fact, brief: "official screenshot", role: "illustration" });
+  const ok = [0, 1, 2, 3].map(() => sh("targets 30 frames per second"));
+  it("returns angle and shot fields", () => {
+    const r = validateScript({ angle: "PS5 Pro vs 30fps", shots: ok }, art);
+    expect(r.angle).toBe("PS5 Pro vs 30fps"); expect(r.shots[0]).toMatchObject({ caption: "30 FPS", role: "illustration", seconds: 4 });
   });
+  it("rejects facts absent from article", () => {
+    expect(() => validateScript({ angle: "a", shots: [...ok.slice(0, 3), sh("runs at 60 FPS on PS5 Pro")] }, art)).toThrow(/не найден/);
+  });
+  it("honours model rejection of weak article", () => { expect(() => validateScript({ reject: true, reason: "weak" }, art)).toThrow(/отклонена/); });
+  it("requires evidence/illustration role", () => { expect(() => validateScript({ angle: "a", shots: ok.map((x) => ({ ...x, role: "proof" })) }, art)).toThrow(/роль/); });
 });
