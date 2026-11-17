@@ -1,0 +1,13 @@
+{
+  "status": "done",
+  "model": "fal-ai/kling-video/v2.5-turbo/pro/image-to-video",
+  "request_id": "01a1eb2a-991e-72e0-afb4-7664fcf8453f",
+  "result": {
+    "video": {
+      "url": "https://v3b.fal.media/files/b/0ab2df26/cX5O9tBGsLB_8thjzoNw0_output.mp4",
+      "content_type": "video/mp4",
+      "file_name": "output.mp4",
+      "file_size": 14052606
+    }
+  }
+}
