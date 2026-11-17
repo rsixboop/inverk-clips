@@ -35,7 +35,10 @@ export function pickAssets(shots: { text: string; material: string; brief?: stri
     // claims. Do not silently substitute a random character/city shot for a
     // requested storage screen, download UI, lock, countdown or game library.
     // These need a purpose-built explanation layer or an explicitly supplied asset.
-    if (/\\b(storage (?:screen|menu|interface)|disk (?:space|meter)|download (?:bar|progress|screen)|console (?:menu|interface)|game library|latency graph|connection meter|release calendar|countdown|lock icon)\\b/.test(brief)) return "";
+    if (["storage screen", "storage menu", "storage interface", "disk space", "disk meter",
+      "download bar", "download progress", "download screen", "console menu", "console interface",
+      "game library", "latency graph", "connection meter", "release calendar", "countdown",
+      "lock icon"].some((concept) => brief.includes(concept))) return "";
     const best = CATALOG.filter((a) => !used.has(a.id))
       .map((a) => ({ a, score: a.tags.reduce((n, t) => n + (hasWord(brief, t) ? 3 : 0) + (hasWord(rest, t) ? 1 : 0), 0) }))
       .sort((x, y) => y.score - x.score)[0];
