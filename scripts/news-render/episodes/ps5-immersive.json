@@ -14,20 +14,16 @@
   "scenes": [
     {
       "narration": "GTA Six on PlayStation Five has three upgrades beyond graphics.",
-      "asset": {
-        "semantic_key": "ps5-immersive-feature-reveal",
-        "intent": "An exciting, mysterious announcement that the PS5 version of an open-world neon coastal crime game has extra immersion beyond visual fidelity",
-        "scene": "A premium pearl-white next-generation game controller floating above a tiny miniature tropical night city, purple lightning-like ambience, waves of neon pink light radiating into palm silhouettes; deep visual depth, no text, cinematic composition.",
-        "motion": "Camera descends toward the hovering controller while three separate luminous swirls gradually light up around it and palm silhouettes sway; subtle city reflections, elegant reveal."
-      }
+      "stock_image": "vc16",
+      "visual_intent": "Open on an authentic official panoramic Leonida city image; add only a discreet title GTA VI · PS5"
     },
     {
       "narration": "DualSense haptics bring the action right into your hands.",
       "asset": {
         "semantic_key": "controller-haptic-feedback",
         "intent": "Real tactile vibration and detailed physical feedback from a handheld game controller",
-        "scene": "Premium white two-grip gamepad in a close-up product shot over dark reflective purple glass, tactile micro-vibration visible through magenta energy ripples around grips, realistic triggers and analog sticks, hands only if anatomically correct, palms reflected in background.",
-        "motion": "The triggers press and release subtly, refined violet tactile ripples travel from the controller's grips outward, tiny dust particles react to each pulse, smooth close dolly movement; no deformations."
+        "scene": "Hero studio photograph of a single physically accurate premium white game controller resting rigidly on a clear acrylic block above a muted turquoise glass table, original tropical skyline softly out of focus behind, precise real analog sticks and triggers, rich tactile material detail, coral highlights and subtle purple light reflecting around the grip. Absolutely no hands or extra controllers.",
+        "motion": "The controller body stays completely rigid in the same location, only refined concentric soft cyan/magenta tactile energy ripples emit from the grip areas one after another; steady slow product camera push-in, subtle light and particles. No rotation, no shape change, no extra buttons appearing."
       }
     },
     {
@@ -35,8 +31,8 @@
       "asset": {
         "semantic_key": "spatial-audio-3d-city",
         "intent": "Spatial surround audio in a tropical neon city environment, feeling of sound approaching from every direction",
-        "scene": "A high-angle view of an original tropical harbor city at dusk with tall palms, glass skyscrapers, purple road reflections, an exquisitely detailed set of floating concentric translucent acoustic wave-rings wrapping the environment from every direction; the rings are photographic lens phenomena not generic UI charts.",
-        "motion": "Deep ultraviolet translucent acoustic waves expand smoothly in 3D across the city, pass behind palm leaves and around architecture, camera travels gently sideways, layered realistic spatial depth."
+        "scene": "A sculpturally accurate premium pair of matte-black over-ear gaming headphones suspended in foreground above a recognizably tropical coastal city at dusk. Transparent amber and cyan three-dimensional sound spheres surround ONLY the ear cups, realistic palm trees in soft background, crystal clear high-end game-product visualization, strong separation between the headphones and city roads, no text.",
+        "motion": "Headphones are fixed and keep exact geometry. A gentle camera orbit reveals headphone depth while two clean concentric transparent acoustic spheres pulse outward from ear cups, fading softly into depth. Keep city static except subtle moving reflections. No morphing, no highway-like rings."
       }
     },
     {
@@ -44,8 +40,8 @@
       "asset": {
         "semantic_key": "fast-loading-world-transition",
         "intent": "Loading transition that feels much faster and instantly opens the virtual city",
-        "scene": "A premium futuristic reflective silver doorway/portal emerging from a dark tropical street, one side charcoal with frozen specks, the other alive with a vivid purple and turquoise coastal city at night, a flowing ribbon of light linking both sides; cinematic concept art illustration, no words.",
-        "motion": "A stream of bright particles rapidly races through the portal from darkness to a colorful tropical city; the aperture opens smoothly to reveal the complete neon street, camera moves steadily through the threshold without distortion."
+        "scene": "Extremely premium macro cinematic view of an elegant transparent solid-state memory chip seated in an angular black console-like device, fiber optic luminous light running toward a small holographic tropical night skyline behind it, teal color theme with warm coral city highlights, precise physical forms, premium futuristic product advertisement, no numeric bar, no text.",
+        "motion": "A bright focused packet of light travels fast along an existing fiber from the stable SSD into the holographic coastal city, which illuminates smoothly from near-darkness; camera tracks light along the physical path, no portal transformation, no objects changing shape."
       }
     },
     {
@@ -53,9 +49,10 @@
       "asset": {
         "semantic_key": "ps5-immersive-feature-triad",
         "intent": "Show visual choice between controller haptics, spatial audio and loading speed without telling viewer what to answer",
-        "scene": "Three sophisticated floating crystal-like sculptural objects arranged in a cinematic triangle above a glossy wet tropical night street: left a pearl-white physical controller, center a glowing translucent spatial sound sphere, right a shimmering violet portal into an illuminated city; tropical palm silhouettes and magenta/violet sunset sky, no words.",
-        "motion": "Camera floats between three stable sculptural objects, left object emits tactile ripples, central sphere pulses with sound and right doorway glows with moving light; then all settle, leaving a satisfying space for the viewer's decision."
+        "scene": "High-end physical museum-like studio installation, three SEPARATE STATIONARY objects on three fixed podiums under warm sunset light: left accurate ivory gamepad, middle elegant matte headphones with faint cyan acoustic aura, right small silver SSD module with amber light trail leading toward a miniature coastal skyline. Foreground dark glass, softly visible tropical palms, natural coral teal purple gradient (not monochromatic). No letters, no icons, no disembodied hands.",
+        "motion": "All three display objects stay completely motionless and preserve exact identity and position. Slow cinematic camera dolly from left to right reveals all three with subtle separate glows: controller magenta, headphones cyan, SSD amber. No shape shifting, no swapping, no particle morphing or teleporting."
       }
     }
-  ]
+  ],
+  "version": 2
 }
