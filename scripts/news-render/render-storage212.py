@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[2]
 BASE = ROOT / "scripts/news-render/size212"
 BASE.mkdir(parents=True, exist_ok=True)
-OUT = ROOT / "public/gta6_212gb_news.mp4"
+OUT = ROOT / "public/gta6_212gb_refined.mp4"
 W,H,FPS,SR = 720,1280,30,48000
 VOICE = "am_fenrir"
 LINES = [
