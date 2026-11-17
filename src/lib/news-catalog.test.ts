@@ -4,6 +4,10 @@ import { PILOT } from "./news-pilot";
 describe("news catalog", () => {
   it("picks 4 distinct catalog assets for the pilot", () => { const ids = pickAssets(PILOT); expect(new Set(ids).size).toBe(4); ids.forEach((i) => expect(findAsset(i)).toBeTruthy()); });
   it("matches shot text to tags", () => { expect(pickAssets([{ text: "Boats in Leonida Keys", material: "" }])[0]).toBe("lk01"); expect(CATALOG.length).toBeGreaterThanOrEqual(15); });
+  it("never substitutes a random GTA art image for a storage menu", () => {
+    expect(pickAssets([{ text: "Rockstar confirmed GTA VI storage requirement", material: "", brief: "console storage interface" }])[0]).toBe("");
+    expect(pickAssets([{ text: "Game launch", material: "", brief: "game library with delete button" }])[0]).toBe("");
+  });
   it("leaves zero-match shots empty", () => { expect(pickAssets([{ text: "zzz qqq", material: "" }])[0]).toBe(""); });
   it("no substring false positives", () => {
     expect(pickAssets([{ text: "The article says yes", material: "" }])[0]).toBe("");
