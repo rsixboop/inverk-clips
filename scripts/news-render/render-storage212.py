@@ -141,37 +141,76 @@ def cover(key, progress):
     y=round(extra_y*max(0,min(1,0.5-0.7*shift)))
     return img.crop((x,y,x+W,y+H))
 
-def caption(im, line, prog):
-    layer=Image.new("RGBA",(W,H),(0,0,0,0)); d=ImageDraw.Draw(layer)
-    for y in range(760,H):
-        alpha=round(155*((y-760)/(H-760))**1.5)
-        d.line([(0,y),(W,y)],fill=(0,0,0,alpha),width=1)
-    d.rounded_rectangle((38,57,177,94),radius=9,fill=(0,0,0,152))
-    d.text((49,63),"GTA VI",font=font(23),fill=LIME)
+def story_graphics(im, line, elapsed, spoken_seconds):
+    """Reveal visual proof only as the narration reaches it; never preview the
+    next point via persistent lower-third topic summaries."""
+    p=max(0,min(1,elapsed/max(0.1,spoken_seconds)))
+    overlay=Image.new("RGBA",(W,H),(0,0,0,0))
+    d=ImageDraw.Draw(overlay)
+    d.rounded_rectangle((37,56,165,96),radius=10,fill=(3,8,12,150))
+    d.text((50,63),"GTA VI",font=font(23),fill=LIME)
+    def panel(box):
+        d.rounded_rectangle(box,radius=19,fill=(11,19,24,185),outline=(136,166,164,90),width=2)
     if line==0:
-        d.text((44,875),"UP TO",font=font(52),fill=WHITE)
-        # Number is tied to its spoken sentence, not a standalone card.
-        d.text((39,930),"212 GB",font=font(130),fill=LIME,stroke_width=2,stroke_fill=(9,9,9))
-        d.text((45,1102),"PRELOAD SPACE",font=font(28),fill=WHITE)
-    else:
-        y=948
-        for j,part in enumerate(CAPS[line]):
-            size=59 if len(part)>16 else 72
-            d.text((42,y+88*j),part,font=font(size),fill=LIME if j==1 else WHITE,
-                   stroke_width=2,stroke_fill=(0,0,0))
-    if line==1:
-        d.text((42,1197),"SOURCE: ROCKSTAR SUPPORT",font=font(23),fill=(205,212,215))
-    if line==2:
-        # Simple editorial visualization, not a fake Xbox/PS storefront screenshot.
-        d.rounded_rectangle((420,129,666,170),radius=10,fill=(0,0,0,140))
-        d.text((438,137),"PS5  /  XBOX",font=font(22),fill=WHITE)
-        d.rounded_rectangle((42,1168,680,1182),radius=7,fill=(90,90,90,180))
-        d.rounded_rectangle((42,1168,42+round(638*prog),1182),radius=7,fill=LIME)
-    if line==3:
-        d.text((43,1198),"DOWNLOAD ≠ PLAY",font=font(27),fill=(210,210,205))
-    if line==4:
-        d.text((43,1198),"LOCAL MIDNIGHT",font=font(27),fill=WHITE)
-    return Image.alpha_composite(im.convert("RGBA"),layer).convert("RGB")
+        # An immediate numeric hook is useful; the extra 'preload space' teaser isn't.
+        if p<0.84:
+            d.text((38,946),"212 GB",font=font(133),fill=LIME,
+                   stroke_width=4,stroke_fill=(5,11,15))
+        if p>0.40:
+            panel((40,1100,678,1192))
+            d.rounded_rectangle((70,1135,651,1162),radius=11,fill=(69,82,89,220))
+            width=round(576*min(1,(p-0.40)/0.56))
+            if width>4: d.rounded_rectangle((70,1135,70+width,1162),radius=min(11,width//2),fill=LIME)
+    elif line==1:
+        # Source attribution appears only *after* Rockstar is mentioned.
+        if p>0.40:
+            panel((55,1000,665,1143))
+            d.text((88,1019),"ROCKSTAR",font=font(57),fill=WHITE)
+            d.text((88,1091),"OFFICIAL SUPPORT",font=font(27),fill=LIME)
+    elif line==2:
+        # A stylized download indicator, NOT a fabricated console screenshot.
+        if p>0.13:
+            panel((42,1023,680,1201))
+            d.rounded_rectangle((72,1133,646,1155),radius=10,fill=(65,80,90,230))
+            width=round(566*min(1,(p-0.13)/0.85))
+            if width>4: d.rounded_rectangle((72,1133,72+width,1155),radius=min(10,width//2),fill=LIME)
+        if p>0.44: d.text((92,1050),"PS5",font=font(43),fill=WHITE)
+        if p>0.76: d.text((286,1055),"XBOX SERIES",font=font(36),fill=WHITE)
+    elif line==3:
+        # An actual lock illustrates 'can't play early'. No words spoil the line.
+        if p>0.43:
+            panel((243,832,485,1114))
+            d.arc((299,876,429,1009),180,360,fill=WHITE,width=16)
+            d.rounded_rectangle((290,948,440,1067),radius=15,fill=(40,50,58,240),outline=LIME,width=6)
+            d.ellipse((360,980,370,990),fill=WHITE)
+            d.rectangle((362,990,367,1023),fill=WHITE)
+    elif line==4:
+        # NOV 19 appears *during* that exact phrase, not before the narrator.
+        if p>0.39:
+            panel((104,892,629,1093))
+            d.text((135,920),"NOV 19",font=font(102),fill=LIME)
+        if p>0.77:
+            cx,cy=551,1144
+            d.ellipse((cx-43,cy-43,cx+43,cy+43),fill=(17,27,31,220),outline=WHITE,width=5)
+            d.line((cx,cy,cx,cy-30),fill=WHITE,width=5)
+            d.line((cx,cy,cx+27,cy),fill=LIME,width=5)
+    elif line==5:
+        # Viewer sees a game library and a choice about deleting one title,
+        # instead of two GTA characters with no link to the spoken question.
+        if p>0.08:
+            panel((36,781,680,1171))
+            palette=[(69,136,171),(124,105,188),(176,113,93)]
+            for j,c in enumerate(palette):
+                x=67+j*199
+                d.rounded_rectangle((x,828,x+167,1036),radius=13,fill=c)
+                d.line((x+18,856,x+149,1006),fill=(224,233,234,170),width=7)
+                d.line((x+142,862,x+30,999),fill=(24,39,58,155),width=10)
+            if p>0.48:
+                d.rounded_rectangle((252,814,454,1051),radius=14,outline=LIME,width=7)
+                d.rounded_rectangle((316,1080,404,1152),radius=12,fill=(177,61,69,240))
+                d.rectangle((348,1094,374,1136),fill=WHITE)
+                d.line((343,1089,379,1089),fill=WHITE,width=6)
+    return Image.alpha_composite(im.convert("RGBA"),overlay).convert("RGB")
 
 def main():
     print("Generating 6 measured TTS lines",flush=True)
