@@ -55,7 +55,7 @@ def render(config):
     # The style-aware library automatically checks whether each concept already
     # exists at a matching quality/style before it spends on a new animation.
     assets,spent=ensure_assets([s["asset"] for s in scenes],
-                               ep.get("style","vice-neon"),ep.get("max_asset_spend_usd",5))
+                               ep.get("style","vice-neon"),ep.get("max_asset_spend_usd",5),episode_id=project)
     if len(assets)<4:raise RuntimeError("Minimum 4 genuine generated motion assets required")
     print("ASSET_SELECTION",len(assets),"estimated new spend",spent,flush=True)
     # Encode montage to standardized 720x1280 H.264 clips at *native speed*.
