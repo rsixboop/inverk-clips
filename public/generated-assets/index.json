@@ -9,10 +9,10 @@
       "style_signature": "432dc1b09067",
       "image_path": "public/generated-assets/vice-neon/fec87cb98d459c/plate.png",
       "video_path": "public/generated-assets/vice-neon/fec87cb98d459c/motion.mp4",
-      "status": "auto_validated",
+      "status": "rejected",
       "reuse_count": 1,
       "max_reuse": 4,
-      "quality": 0.8,
+      "quality": 0.45,
       "prompt": "Create a production-grade original cinematic EDITORIAL ASSET. Precise visual intent: An exciting, mysterious announcement that the PS5 version of an open-world neon coastal crime game has extra immersion beyond visual fidelity. Scene design: A premium pearl-white next-generation game controller floating above a tiny miniature tropical night city, purple lightning-like ambience, waves of neon pink light radiating into palm silhouettes; deep visual depth, no text, cinematic composition.. Art direction: Vice Neon Editorial. Palette: deep purple, electric magenta, turquoise, sunset orange. Materials: premium glossy translucent acrylic, satin metal, pearlescent glass. Environment: tropical after-dark city glow with palm silhouettes, purple-blue haze and cinematic reflections. Lighting: magenta cyan edge lighting, warm neon reflections, professional product studio lighting. Portrait 9:16 composition for mobile, gorgeous coherent product cinematography, single main visual action, detailed surface textures, polished high-budget game marketing aesthetic. This is an ORIGINAL illustrative visualization, NOT a purported real game screenshot. Absolutely avoid: no crude icon, no clipart, no flat svg UI, no fake screenshot, no text, no logos, no watermark, no pixelated texture, any captions, logos, game characters, letters, numbers, textual UI.",
       "motion_prompt": "Make this EXACT existing graphic come to life in a coherent continuous 5-second cinematic shot. Camera descends toward the hovering controller while three separate luminous swirls gradually light up around it and palm silhouettes sway; subtle city reflections, elegant reveal.. subtle realistic mechanical action, convincing spatial depth, smooth tracking camera, no random morphing. The primary visual remains completely recognizable and physically stable. Show a clear beginning, changing middle, and meaningful visual end-state, with fluid photorealistic animation. No letters, no talking faces, no flickering/morphing, no unwanted objects, no abrupt jump cut, no logos, no watermark.",
       "created_at": "2026-11-17T19:53:04Z",
@@ -21,7 +21,9 @@
       "last_used_on": "2026-11-17",
       "used_in_episodes": [
         "gta6-ps5-immersive-features"
-      ]
+      ],
+      "visual_review": "Deformed controller and weak GTA identification; replaced with sourced official image",
+      "reviewed_by": "Lovable visual contact sheet 2026-11-17"
     },
     {
       "id": "4faa7250095872",
@@ -31,10 +33,10 @@
       "style_signature": "432dc1b09067",
       "image_path": "public/generated-assets/vice-neon/4faa7250095872/plate.png",
       "video_path": "public/generated-assets/vice-neon/4faa7250095872/motion.mp4",
-      "status": "auto_validated",
+      "status": "rejected",
       "reuse_count": 1,
       "max_reuse": 4,
-      "quality": 0.8,
+      "quality": 0.45,
       "prompt": "Create a production-grade original cinematic EDITORIAL ASSET. Precise visual intent: Real tactile vibration and detailed physical feedback from a handheld game controller. Scene design: Premium white two-grip gamepad in a close-up product shot over dark reflective purple glass, tactile micro-vibration visible through magenta energy ripples around grips, realistic triggers and analog sticks, hands only if anatomically correct, palms reflected in background.. Art direction: Vice Neon Editorial. Palette: deep purple, electric magenta, turquoise, sunset orange. Materials: premium glossy translucent acrylic, satin metal, pearlescent glass. Environment: tropical after-dark city glow with palm silhouettes, purple-blue haze and cinematic reflections. Lighting: magenta cyan edge lighting, warm neon reflections, professional product studio lighting. Portrait 9:16 composition for mobile, gorgeous coherent product cinematography, single main visual action, detailed surface textures, polished high-budget game marketing aesthetic. This is an ORIGINAL illustrative visualization, NOT a purported real game screenshot. Absolutely avoid: no crude icon, no clipart, no flat svg UI, no fake screenshot, no text, no logos, no watermark, no pixelated texture, any captions, logos, game characters, letters, numbers, textual UI.",
       "motion_prompt": "Make this EXACT existing graphic come to life in a coherent continuous 5-second cinematic shot. The triggers press and release subtly, refined violet tactile ripples travel from the controller's grips outward, tiny dust particles react to each pulse, smooth close dolly movement; no deformations.. subtle realistic mechanical action, convincing spatial depth, smooth tracking camera, no random morphing. The primary visual remains completely recognizable and physically stable. Show a clear beginning, changing middle, and meaningful visual end-state, with fluid photorealistic animation. No letters, no talking faces, no flickering/morphing, no unwanted objects, no abrupt jump cut, no logos, no watermark.",
       "created_at": "2026-11-17T19:55:59Z",
@@ -43,7 +45,9 @@
       "last_used_on": "2026-11-17",
       "used_in_episodes": [
         "gta6-ps5-immersive-features"
-      ]
+      ],
+      "visual_review": "Morphing gamepad anatomy and malformed reflections",
+      "reviewed_by": "Lovable visual contact sheet 2026-11-17"
     },
     {
       "id": "676fed602954bb",
@@ -53,10 +57,10 @@
       "style_signature": "432dc1b09067",
       "image_path": "public/generated-assets/vice-neon/676fed602954bb/plate.png",
       "video_path": "public/generated-assets/vice-neon/676fed602954bb/motion.mp4",
-      "status": "auto_validated",
+      "status": "rejected",
       "reuse_count": 1,
       "max_reuse": 4,
-      "quality": 0.8,
+      "quality": 0.45,
       "prompt": "Create a production-grade original cinematic EDITORIAL ASSET. Precise visual intent: Spatial surround audio in a tropical neon city environment, feeling of sound approaching from every direction. Scene design: A high-angle view of an original tropical harbor city at dusk with tall palms, glass skyscrapers, purple road reflections, an exquisitely detailed set of floating concentric translucent acoustic wave-rings wrapping the environment from every direction; the rings are photographic lens phenomena not generic UI charts.. Art direction: Vice Neon Editorial. Palette: deep purple, electric magenta, turquoise, sunset orange. Materials: premium glossy translucent acrylic, satin metal, pearlescent glass. Environment: tropical after-dark city glow with palm silhouettes, purple-blue haze and cinematic reflections. Lighting: magenta cyan edge lighting, warm neon reflections, professional product studio lighting. Portrait 9:16 composition for mobile, gorgeous coherent product cinematography, single main visual action, detailed surface textures, polished high-budget game marketing aesthetic. This is an ORIGINAL illustrative visualization, NOT a purported real game screenshot. Absolutely avoid: no crude icon, no clipart, no flat svg UI, no fake screenshot, no text, no logos, no watermark, no pixelated texture, any captions, logos, game characters, letters, numbers, textual UI.",
       "motion_prompt": "Make this EXACT existing graphic come to life in a coherent continuous 5-second cinematic shot. Deep ultraviolet translucent acoustic waves expand smoothly in 3D across the city, pass behind palm leaves and around architecture, camera travels gently sideways, layered realistic spatial depth.. subtle realistic mechanical action, convincing spatial depth, smooth tracking camera, no random morphing. The primary visual remains completely recognizable and physically stable. Show a clear beginning, changing middle, and meaningful visual end-state, with fluid photorealistic animation. No letters, no talking faces, no flickering/morphing, no unwanted objects, no abrupt jump cut, no logos, no watermark.",
       "created_at": "2026-11-17T19:57:53Z",
@@ -65,7 +69,9 @@
       "last_used_on": "2026-11-17",
       "used_in_episodes": [
         "gta6-ps5-immersive-features"
-      ]
+      ],
+      "visual_review": "Sound rings read as roads, weak object semantics",
+      "reviewed_by": "Lovable visual contact sheet 2026-11-17"
     },
     {
       "id": "9c87d8bd07fcd1",
@@ -75,10 +81,10 @@
       "style_signature": "432dc1b09067",
       "image_path": "public/generated-assets/vice-neon/9c87d8bd07fcd1/plate.png",
       "video_path": "public/generated-assets/vice-neon/9c87d8bd07fcd1/motion.mp4",
-      "status": "auto_validated",
+      "status": "rejected",
       "reuse_count": 1,
       "max_reuse": 4,
-      "quality": 0.8,
+      "quality": 0.45,
       "prompt": "Create a production-grade original cinematic EDITORIAL ASSET. Precise visual intent: Loading transition that feels much faster and instantly opens the virtual city. Scene design: A premium futuristic reflective silver doorway/portal emerging from a dark tropical street, one side charcoal with frozen specks, the other alive with a vivid purple and turquoise coastal city at night, a flowing ribbon of light linking both sides; cinematic concept art illustration, no words.. Art direction: Vice Neon Editorial. Palette: deep purple, electric magenta, turquoise, sunset orange. Materials: premium glossy translucent acrylic, satin metal, pearlescent glass. Environment: tropical after-dark city glow with palm silhouettes, purple-blue haze and cinematic reflections. Lighting: magenta cyan edge lighting, warm neon reflections, professional product studio lighting. Portrait 9:16 composition for mobile, gorgeous coherent product cinematography, single main visual action, detailed surface textures, polished high-budget game marketing aesthetic. This is an ORIGINAL illustrative visualization, NOT a purported real game screenshot. Absolutely avoid: no crude icon, no clipart, no flat svg UI, no fake screenshot, no text, no logos, no watermark, no pixelated texture, any captions, logos, game characters, letters, numbers, textual UI.",
       "motion_prompt": "Make this EXACT existing graphic come to life in a coherent continuous 5-second cinematic shot. A stream of bright particles rapidly races through the portal from darkness to a colorful tropical city; the aperture opens smoothly to reveal the complete neon street, camera moves steadily through the threshold without distortion.. subtle realistic mechanical action, convincing spatial depth, smooth tracking camera, no random morphing. The primary visual remains completely recognizable and physically stable. Show a clear beginning, changing middle, and meaningful visual end-state, with fluid photorealistic animation. No letters, no talking faces, no flickering/morphing, no unwanted objects, no abrupt jump cut, no logos, no watermark.",
       "created_at": "2026-11-17T20:00:43Z",
@@ -86,7 +92,9 @@
       "technical_qc": "motion=50.77",
       "used_in_episodes": [
         "gta6-ps5-immersive-features"
-      ]
+      ],
+      "visual_review": "Portal lacks clear relationship to faster storage loading",
+      "reviewed_by": "Lovable visual contact sheet 2026-11-17"
     },
     {
       "id": "d00452c9e7f9bb",
@@ -96,10 +104,10 @@
       "style_signature": "432dc1b09067",
       "image_path": "public/generated-assets/vice-neon/d00452c9e7f9bb/plate.png",
       "video_path": "public/generated-assets/vice-neon/d00452c9e7f9bb/motion.mp4",
-      "status": "auto_validated",
+      "status": "rejected",
       "reuse_count": 1,
       "max_reuse": 4,
-      "quality": 0.8,
+      "quality": 0.45,
       "prompt": "Create a production-grade original cinematic EDITORIAL ASSET. Precise visual intent: Show visual choice between controller haptics, spatial audio and loading speed without telling viewer what to answer. Scene design: Three sophisticated floating crystal-like sculptural objects arranged in a cinematic triangle above a glossy wet tropical night street: left a pearl-white physical controller, center a glowing translucent spatial sound sphere, right a shimmering violet portal into an illuminated city; tropical palm silhouettes and magenta/violet sunset sky, no words.. Art direction: Vice Neon Editorial. Palette: deep purple, electric magenta, turquoise, sunset orange. Materials: premium glossy translucent acrylic, satin metal, pearlescent glass. Environment: tropical after-dark city glow with palm silhouettes, purple-blue haze and cinematic reflections. Lighting: magenta cyan edge lighting, warm neon reflections, professional product studio lighting. Portrait 9:16 composition for mobile, gorgeous coherent product cinematography, single main visual action, detailed surface textures, polished high-budget game marketing aesthetic. This is an ORIGINAL illustrative visualization, NOT a purported real game screenshot. Absolutely avoid: no crude icon, no clipart, no flat svg UI, no fake screenshot, no text, no logos, no watermark, no pixelated texture, any captions, logos, game characters, letters, numbers, textual UI.",
       "motion_prompt": "Make this EXACT existing graphic come to life in a coherent continuous 5-second cinematic shot. Camera floats between three stable sculptural objects, left object emits tactile ripples, central sphere pulses with sound and right doorway glows with moving light; then all settle, leaving a satisfying space for the viewer's decision.. subtle realistic mechanical action, convincing spatial depth, smooth tracking camera, no random morphing. The primary visual remains completely recognizable and physically stable. Show a clear beginning, changing middle, and meaningful visual end-state, with fluid photorealistic animation. No letters, no talking faces, no flickering/morphing, no unwanted objects, no abrupt jump cut, no logos, no watermark.",
       "created_at": "2026-11-17T20:04:04Z",
@@ -107,7 +115,9 @@
       "technical_qc": "motion=24.26",
       "used_in_episodes": [
         "gta6-ps5-immersive-features"
-      ]
+      ],
+      "visual_review": "Props shift identity and location while animating",
+      "reviewed_by": "Lovable visual contact sheet 2026-11-17"
     }
   ],
   "total_generated": 5
