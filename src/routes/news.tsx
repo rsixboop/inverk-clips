@@ -216,6 +216,11 @@ function News() {
           <div className="text-muted-foreground">{voice ? `Загружено: ${voice.name}` : "Озвучка не загружена — экспорт будет без звука."}</div></div>
       </div>
       <div className="panel p-3 space-y-2">
+        <div className="rounded-md border border-border p-2 space-y-1">
+          <b className="text-xs">Готовый тестовый ролик · GTA VI / Xbox Cloud</b>
+          <video controls playsInline preload="metadata" src="/gta6_cloud_v2.mp4" className="w-full rounded bg-muted" />
+          <a href="/gta6_cloud_v2.mp4" download="gta6_cloud_v2.mp4" className="block text-xs text-primary underline">Скачать .mp4 (22 с, 720×1280)</a>
+        </div>
         <canvas ref={canvas} width={W} height={H} className="aspect-[9/16] w-full rounded bg-muted" />
         <button disabled={busy || !media.some(Boolean)} onClick={() => play(false)} className="h-8 w-full rounded-md border border-border text-xs disabled:opacity-50">Предпросмотр раскадровки</button>
         <button disabled={!ready} onClick={() => play(true)} className="h-8 w-full rounded-md bg-primary text-xs text-primary-foreground disabled:opacity-50">{voice ? "Экспорт видео с озвучкой" : "Экспорт видео (без звука)"}</button>
