@@ -1,0 +1,166 @@
+{
+  "title": "GTA VI Xbox Cloud — V2 editorial recut",
+  "provenance": "Same verified V2 narration; hand-selected native Rockstar footage/stills; no new AI or network research. Do not present illustrations as gameplay.",
+  "output": {
+    "file": "public/gta6_cloud_editorial.mp4",
+    "w": 720,
+    "h": 1280,
+    "fps": 30,
+    "end": 22.2
+  },
+  "voice": {
+    "file": "scripts/news-render/voice.wav",
+    "tts": "fal-ai/kokoro/american-english am_michael, 1 call, see tts.json",
+    "loudnorm": "I=-14:TP=-1.5:LRA=11"
+  },
+  "sources": {
+    "rockstar": "https://www.rockstargames.com/newswire/article/89834o94713o21/pre-load-grand-theft-auto-vi-now",
+    "xbox": "https://news.xbox.com/en-us/2026/11/10/grand-theft-auto-6-comes-to-xbox-cloud-gaming-november-19/",
+    "clips": "https://www.rockstargames.com/VI/media/videos (official character clips, used as illustration, speed 1.0, no loops)"
+  },
+  "segments": [
+    {
+      "t": [
+        0,
+        2.8
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/vc16.jpg",
+      "focus_x": 0.48,
+      "caption": "GTA VI ON XBOX ONE?"
+    },
+    {
+      "t": [
+        2.8,
+        4
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/jd01.jpg",
+      "focus_x": 0.62,
+      "clip": "jason"
+    },
+    {
+      "t": [
+        4,
+        6.8
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/jl06.jpg",
+      "focus_x": 0.52,
+      "caption": "YES — THROUGH THE CLOUD",
+      "source_label": "Xbox Wire"
+    },
+    {
+      "t": [
+        6.8,
+        8.8
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/vc01.jpg",
+      "focus_x": 0.55,
+      "caption": "SERIES S VISUALS"
+    },
+    {
+      "t": [
+        8.8,
+        10.2
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/vc04.jpg",
+      "focus_x": 0.64,
+      "clip": "cal"
+    },
+    {
+      "t": [
+        10.2,
+        11.4
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/vc11.jpg",
+      "focus_x": 0.57,
+      "clip": "dimez"
+    },
+    {
+      "t": [
+        11.4,
+        13.5
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/vc02.jpg",
+      "focus_x": 0.52,
+      "caption": "YOUR CONNECTION MATTERS"
+    },
+    {
+      "t": [
+        13.5,
+        15.6
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/vc07.jpg",
+      "focus_x": 0.56,
+      "caption": "PERFORMANCE MAY VARY",
+      "source_label": "Rockstar Newswire"
+    },
+    {
+      "t": [
+        15.6,
+        17.2
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/lc01.jpg",
+      "focus_x": 0.48,
+      "clip": "lucia"
+    },
+    {
+      "t": [
+        17.2,
+        18.5
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/mk02.jpg",
+      "focus_x": 0.55,
+      "clip": "brian"
+    },
+    {
+      "t": [
+        18.5,
+        20.1
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/vc20.jpg",
+      "focus_x": 0.54,
+      "caption": "STREAMED, NOT INSTALLED"
+    },
+    {
+      "t": [
+        20.1,
+        22.2
+      ],
+      "kind": "cinematic",
+      "bg": "public/gta6-media/jl13.jpg",
+      "focus_x": 0.5,
+      "caption": "WOULD YOU STREAM IT?"
+    }
+  ],
+  "clip_sources": {
+    "jason": "https://www.rockstargames.com/VI/_next/static/media/Jason_Duval_Video_Clip.10.gc09c9y-j9.mp4",
+    "lucia": "https://www.rockstargames.com/VI/_next/static/media/Lucia_Caminos_Video_Clip.0g8.3fx84ixw..mp4",
+    "cal": "https://www.rockstargames.com/VI/_next/static/media/Cal_Hampton_Video_Clip.13-520tpb1vbq.mp4",
+    "boobie": "https://www.rockstargames.com/VI/_next/static/media/Boobie_Ike_Video_Clip.0yf7eprhr68rj.mp4",
+    "dre": "https://www.rockstargames.com/VI/_next/static/media/DreQuan_Priest_Video_Clip.0g~ify.ccqpkj.mp4",
+    "dimez": "https://www.rockstargames.com/VI/_next/static/media/Real_Dimez_Video_Clip.0.cgr_26mspvm.mp4",
+    "raul": "https://www.rockstargames.com/VI/_next/static/media/Raul_Bautista_Video_Clip.0vg4g-gyqaksg.mp4",
+    "brian": "https://www.rockstargames.com/VI/_next/static/media/Brian_Heder_Video_Clip.0yy.ets6sso8~.mp4"
+  },
+  "crop_x": {
+    "jason": 0.87,
+    "lucia": 0.54,
+    "cal": 1,
+    "boobie": 0,
+    "dimez": 0.73,
+    "dre": 0.61,
+    "raul": 0.73,
+    "brian": 0.84
+  },
+  "edit_note": "Scene boundaries follow V2 narration phrases (2.8,6.8,10.8,17.2). No fullscreen cards; short text appears only on 6 of 12 editorial shots. Still images receive slow crop motion."
+}
