@@ -71,8 +71,7 @@ def render(config):
              "-bufsize","2600k","-pix_fmt","yuv420p","-movflags","+faststart",str(cut)])
         parts.append(cut)
     listing=work/"concat.txt"
-    listing.write_text("".join("file '"+str(p.resolve()).replace("'","")+"'
-" for p in parts))
+    listing.write_text("".join("file '"+str(p.resolve()).replace("'","")+"\\n" for p in parts))
     visual=work/"visual.mp4"
     run(["ffmpeg","-y","-nostdin","-v","error","-f","concat","-safe","0","-i",str(listing),
          "-c","copy",str(visual)])
