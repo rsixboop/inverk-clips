@@ -229,14 +229,13 @@ def main():
        for i,v in enumerate(LINES)]})
     global CACHE
     CACHE={key:prepared_image(key) for line in IMGS for key in line}
-    live={i:live_frames(name) for i,name in LIVE.items()}
     seconds=[len(p)/(2*SR) for p in pieces]
     print("Narration duration",duration,"seconds, voice",VOICE,flush=True)
     subprocess.run(["mkdir","-p",str(OUT.parent)],check=True)
     cmd=["ffmpeg","-y","-v","error","-f","rawvideo","-pix_fmt","rgb24",
          "-s",f"{W}x{H}","-r",str(FPS),"-i","-",
          "-i",str(BASE/"narration.wav"),"-i",str(BASE/"original_music.wav"),
-         "-filter_complex","[1:a]volume=1.0[n];[2:a]volume=0.13[m];[n][m]amix=inputs=2:duration=first:dropout_transition=0,alimiter=limit=0.95[a]",
+         "-filter_complex","[1:a]highpass=f=80,acompressor=threshold=0.12:ratio=2.3:attack=9:release=130[n];[2:a]volume=0.38,lowpass=f=4500[m];[n][m]amix=inputs=2:duration=first:weights='1 0.5':normalize=0,loudnorm=I=-16:TP=-1.5:LRA=8[a]",
          "-map","0:v","-map","[a]","-c:v","libx264","-preset","fast",
          "-crf","24","-maxrate","2200k","-bufsize","3300k",
          "-pix_fmt","yuv420p","-c:a","aac","-b:a","128k",
@@ -248,15 +247,12 @@ def main():
         idx=max(i for i,start in enumerate(starts) if t+0.08>=start)
         elapsed=max(0,t-starts[idx])
         prog=min(1,elapsed/max(0.1,seconds[idx]))
-        shot=0 if prog<0.53 else 1
+        bounds=[0.0]+CUTS[idx]+[1.0]
+        shot=next(j for j in range(len(bounds)-1) if prog<bounds[j+1] or j==len(bounds)-2)
         key=IMGS[idx][shot]
-        frame=cover(key, (prog/.53 if shot==0 else (prog-.53)/.47))
-        # A single brief authentic Rockstar character clip near the end of selected lines.
-        if idx in live and shot==1 and live[idx]:
-            footage=live[idx]
-            local=round((prog-0.53)/0.47*len(footage))
-            if 0<=local<len(footage): frame=footage[local]
-        frame=caption(frame,idx,prog)
+        local=max(0,min(1,(prog-bounds[shot])/max(.01,bounds[shot+1]-bounds[shot])))
+        frame=cover(key,local)
+        frame=story_graphics(frame,idx,elapsed,seconds[idx])
         try:proc.stdin.write(frame.tobytes())
         except BrokenPipeError: raise RuntimeError("Video encoder exited early")
         if k%(FPS*6)==0:print("Rendered",round(t,1),"/",round(duration,1),"s",flush=True)
