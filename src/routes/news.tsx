@@ -100,11 +100,11 @@ function News() {
   const pickCatalog = (i: number, id: string) => { const a = findAsset(id); if (a) setMedia((m) => m.map((x, k) => (k === i ? { url: mediaUrl(a.id), video: false, name: `Rockstar: ${a.title}`, state: "loading" } : x))); };
 
   const pickClip = (i: number, id: string) => { const c = findClip(id); if (c) setMedia((m) => m.map((x, k) => (k === i ? { url: mediaUrl(c.id), video: true, name: `Rockstar видео: ${c.title}`, state: "loading" } : x))); };
-  function draw(i: number, progress = 0) {
+  function draw(i: number, progress = 0, cut = 0) {
     const ctx = canvas.current!.getContext("2d")!, el = els.current[i];
     ctx.fillStyle = "#111"; ctx.fillRect(0, 0, W, H);
     if (el) { const sw = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth, sh = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
-      if (sw && sh) { const s = Math.max(W / sw, H / sh) * (1.035 + 0.075 * progress); const dx = (W - sw * s) / 2 + (i % 2 ? 1 : -1) * (progress - 0.5) * 16; ctx.drawImage(el, dx, (H - sh * s) / 2, sw * s, sh * s); } }
+      if (sw && sh) { const s = Math.max(W / sw, H / sh) * (1.045 + (cut % 3) * 0.027 + 0.035 * progress); const dx = (W - sw * s) / 2 + (cut % 2 ? 1 : -1) * (progress - 0.5) * 22; ctx.drawImage(el, dx, (H - sh * s) / 2, sw * s, sh * s); } }
     ctx.font = "bold 64px sans-serif"; ctx.textAlign = "center";
     const lines = wrap(ctx, shots[i]!.caption || shots[i]!.text, W - 160), y0 = H - 520;
     ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(60, y0 - 80, W - 120, lines.length * 80 + 60);
@@ -153,10 +153,20 @@ function News() {
     }
     if (a) { try { await a.el.play(); } catch (e) { rec?.stop(); throw new Error(`озвучка не воспроизводится (${(e as Error).message}) — немой ролик не сохраняю`); } }
     for (let i = 0; i < shots.length; i++) {
-      setStatus(`${record ? "Запись" : "Предпросмотр"}: шот ${i + 1}/4`);
+      setStatus(`${record ? "Запись" : "Предпросмотр"}: шот ${i + 1}/${shots.length}`);
       const el = els.current[i]; if (el instanceof HTMLVideoElement) { el.currentTime = 0; try { await el.play(); } catch (e) { rec?.stop(); a?.el.pause(); throw new Error(`шот ${i + 1}: видео не воспроизводится (${(e as Error).message})`); } }
-      const begin = performance.now(), duration = plan.seconds[i]! * 1000, end = begin + duration;
-      while (performance.now() < end) { draw(i, Math.min(1, (performance.now() - begin) / duration)); await new Promise((r) => requestAnimationFrame(r)); }
+      const cuts = plan.beats.filter((b) => b.shot === i);
+      const segmentStart = performance.now();
+      for (const beat of cuts) {
+        // Absolute deadlines within a shot avoid cumulative RAF/scheduling drift.
+        const from = segmentStart + (beat.start - cuts[0]!.start) * 1000;
+        const to = segmentStart + (beat.end - cuts[0]!.start) * 1000;
+        while (performance.now() < to) {
+          const progress = Math.max(0, Math.min(1, (performance.now() - from) / (beat.seconds * 1000)));
+          draw(i, progress, beat.cut);
+          await new Promise((r) => requestAnimationFrame(r));
+        }
+      }
       if (el instanceof HTMLVideoElement) el.pause();
     }
     if (a) a.el.pause();
@@ -188,7 +198,7 @@ function News() {
           {!approved && <button onClick={() => setApproved(true)} className="h-7 rounded-md border border-primary px-2 text-primary">Утвердить сценарий</button>}
         </div>
         <button onClick={autoPick} className="h-7 rounded-md border border-border px-2 text-xs">Подобрать кадры автоматически</button>
-        <p className="font-mono text-xs">Длительность: {totalSeconds(shots)} с {pilotValid(shots) ? "" : "— нужно 18–23 с"}{voiceSec != null && ` · по озвучке: ${plan.total.toFixed(1)} с`}</p>
+        <p className="font-mono text-xs">Длительность: {totalSeconds(shots)} с {pilotValid(shots) ? "" : "— нужно 18–23 с"}{voiceSec != null && ` · по озвучке: ${plan.total.toFixed(1)} с`} · монтажных акцентов: {plan.beats.length}</p>
         {plan.errors.map((e) => <p key={e} className="text-xs text-destructive">{e}</p>)}
         {shots.map((s, i) => (
           <div key={i} className="rounded-md border border-border p-3 space-y-2 text-sm">
@@ -217,11 +227,12 @@ function News() {
       </div>
       <div className="panel p-3 space-y-2">
         <div className="rounded-md border border-border p-2 space-y-1">
-          <b className="text-xs">Готовый тестовый ролик · GTA VI / Xbox Cloud</b>
+          <b className="text-xs">Предыдущий тест · GTA VI / Xbox Cloud (V2)</b>
           <video controls playsInline preload="metadata" src="/gta6_cloud_v2.mp4" className="w-full rounded bg-muted" />
           <a href="/gta6_cloud_v2.mp4" download="gta6_cloud_v2.mp4" className="block text-xs text-primary underline">Скачать .mp4 (22 с, 720×1280)</a>
         </div>
         <canvas ref={canvas} width={W} height={H} className="aspect-[9/16] w-full rounded bg-muted" />
+        <p className="text-[11px] text-muted-foreground">Новый ритм: смена ракурса каждые ~1,5–2,3 с, без ускорения видео. Проверяется кнопкой предпросмотра ниже; V2 выше сохранён для сравнения.</p>
         <button disabled={busy || !media.some(Boolean)} onClick={() => play(false)} className="h-8 w-full rounded-md border border-border text-xs disabled:opacity-50">Предпросмотр раскадровки</button>
         <button disabled={!ready} onClick={() => play(true)} className="h-8 w-full rounded-md bg-primary text-xs text-primary-foreground disabled:opacity-50">{voice ? "Экспорт видео с озвучкой" : "Экспорт видео (без звука)"}</button>
         {!ready && <p className="text-[11px] text-muted-foreground">Для экспорта: все 4 медиа загружены, подтверждение прав, 18–23 с.</p>}
