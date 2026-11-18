@@ -11,7 +11,7 @@ Windows: start inverk-recorder.bat (downloaded from Sources). Others: INVERK_URL
 """
 import base64, calendar, csv, getpass, glob, json, os, shutil, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 
-VERSION = "2.3"
+VERSION = "2.3.1"
 SEG, PRE, POST = 10, 20, 15
 KEEP_S = int(os.environ.get("INVERK_KEEP_SECONDS", "900"))
 IS_WIN = os.name == "nt"
@@ -314,7 +314,9 @@ def window_frames(inp_args, seek, at):
     return out
 
 def validate(h, inp_args, seek, dur):
-    chatters = int(h.get("chatters") or 0)
+    if h.get("chatters") is None:  # server did not send the count: never treat it as 0 chatters
+        raise NotYet("сервер не передал число зрителей (chatters) — повтор позже")
+    chatters = int(h["chatters"])
     if chatters < MIN_CHATTERS: return decide(chatters, None, [])  # cheap reject before any audio/vision work
     spike = max(1.0, iso_ts(h["end_at"]) - iso_ts(h["start_at"]))
     lv = window_audio(inp_args, seek, dur)

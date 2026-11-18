@@ -155,4 +155,32 @@ class Handoff(unittest.TestCase):
         segs = R.all_segments("sl"); diag = s.diagnose(); s.stop()
         self.assertGreaterEqual(len(segs), 1, diag); self.assertEqual(s.relay.note, "MPEG-TS")
 
+
+class ClaimContract(unittest.TestCase):
+    """Claim payload built from the server's real projection (src/lib/live-claim.ts) over a full live_highlights row."""
+    def claim_payload(self, row):
+        import re
+        src = open(os.path.join(os.path.dirname(__file__), "..", "..", "src", "lib", "live-claim.ts"), encoding="utf-8").read()
+        cols = re.search(r'CLAIM_COLUMNS\s*=\s*"([^"]+)"', src).group(1).split(",")
+        return {**{c: row[c] for c in cols}, "claim": "c1", "upload_url": "https://x/u"}
+
+    ROW = {"id": "895727e2", "user_id": "u", "monitor_id": "mon", "start_at": "2026-11-18T13:57:50+00:00", "end_at": "2026-11-18T13:58:35+00:00",
+           "peak_at": "2026-11-18T13:58:10+00:00", "offset_s": None, "attempts": 0, "score": 41.0, "chatters": 32, "emotes": 3,
+           "status": "awaiting_media", "detail": None, "claim": None, "claim_until": None, "output_path": None, "job_id": None}
+
+    def test_projection_carries_chatters_into_decision(self):
+        h = self.claim_payload(self.ROW); self.assertEqual(h["chatters"], 32)
+        seen = {}
+        orig = (R.decide, R.window_audio, R.window_frames)
+        try:
+            R.window_audio = lambda *a: []; R.window_frames = lambda *a: []
+            R.decide = lambda c, s, sc: seen.setdefault("c", c) and (False, "x")
+            R.validate(h, [], 0, 40)
+        finally: R.decide, R.window_audio, R.window_frames = orig
+        self.assertEqual(seen["c"], 32)   # regression: was 0 (< 8) because the column was not projected
+
+    def test_missing_count_is_retryable_not_rejected(self):
+        h = {k: v for k, v in self.claim_payload(self.ROW).items() if k != "chatters"}
+        with self.assertRaises(R.NotYet): R.validate(h, [], 0, 40)
+
 if __name__ == "__main__": unittest.main(verbosity=2)

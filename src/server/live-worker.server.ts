@@ -1,6 +1,7 @@
 // Recorder-worker protocol: the user's own recorder (scripts/live-recorder) holds a rolling buffer of
 // streams it is authorized to record, claims due highlights, uploads a vertical MP4 to a signed URL and
 // reports completion; the server verifies the file before registering it as a finished job.
+import { CLAIM_COLUMNS } from "@/lib/live-claim";
 import { inspectMp4 } from "@/lib/mp4-inspect";
 
 export async function hashToken(t: string) {
@@ -61,7 +62,7 @@ export async function handleWorker(request: Request): Promise<Response> {
   }
   if (body.action === "claim") {
     const now = new Date().toISOString();
-    const { data: due } = await db.from("live_highlights").select("id,monitor_id,start_at,end_at,peak_at,offset_s,attempts").eq("user_id", uid).eq("status", "awaiting_media")
+    const { data: due } = await db.from("live_highlights").select(CLAIM_COLUMNS).eq("user_id", uid).eq("status", "awaiting_media")
       .lt("end_at", new Date(Date.now() - POST_ROLL_WAIT_MS).toISOString()).or(`claim_until.is.null,claim_until.lt.${now}`).order("start_at").limit(2);
     const out = [];
     for (const h of due ?? []) {
