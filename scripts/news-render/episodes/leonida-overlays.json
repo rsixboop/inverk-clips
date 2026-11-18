@@ -1,0 +1,82 @@
+{
+  "id": "leonida-more-than-vice-city",
+  "mode": "overlay",
+  "style": "vice-neon",
+  "source_url": "https://www.rockstargames.com/VI/only-in-leonida",
+  "source_claims": [
+    "Rockstar showcases regions outside Vice City in the state of Leonida",
+    "Leonida Keys are tropical islands and coastal roads",
+    "Grassrivers is swamp wilderness and wildlife",
+    "Port Gellhorn is a rougher coastal area",
+    "Mount Kalaga National Park is a wilderness landscape"
+  ],
+  "voice": "am_fenrir",
+  "max_asset_spend_usd": 2.5,
+  "output": "public/gta6_leonida_overlay_news.mp4",
+  "scenes": [
+    {
+      "narration": "Think GTA Six is only Vice City? Rockstar has shown a whole state.",
+      "background": "vc16"
+    },
+    {
+      "narration": "The Leonida Keys are an entire chain of tropical islands.",
+      "background": "lk01",
+      "overlay": {
+        "semantic_key": "leonida-keys-island-marker",
+        "object": "one exquisitely polished sculptural tropical island-chain map pin, violet anodized titanium base, tiny turquoise ocean islets suspended inside an elegant metal locator ring, warm coral highlights, miniature palm tree silhouette INSIDE the object, no letters",
+        "animation": "slide_in",
+        "anchor": [
+          0.76,
+          0.32
+        ],
+        "width": 0.39
+      }
+    },
+    {
+      "narration": "Grassrivers takes you deep into swamp country, full of wildlife.",
+      "background": "gr02",
+      "overlay": {
+        "semantic_key": "grassrivers-gator-emblem",
+        "object": "one premium stylized three-dimensional alligator head in a compact enamel and dark-metal badge, detailed jade-green scales, violet edge light, neon-teal water droplets embedded in the badge, elegant cutout object without any text",
+        "animation": "sway",
+        "anchor": [
+          0.78,
+          0.65
+        ],
+        "width": 0.38
+      }
+    },
+    {
+      "narration": "Port Gellhorn is the rougher coast, miles from Vice City's nightlife.",
+      "background": "pg06",
+      "overlay": {
+        "semantic_key": "port-gellhorn-coastal-marker",
+        "object": "one weather-beaten but premium 3D coastal highway directional marker combined with a tiny detailed copper lighthouse miniature inside a dark purple enamel circular pin, golden coral metallic accents, NO lettering, isolated object",
+        "animation": "rise",
+        "anchor": [
+          0.76,
+          0.29
+        ],
+        "width": 0.36
+      }
+    },
+    {
+      "narration": "And Mount Kalaga trades neon streets for wild forest and open country.",
+      "background": "mk02",
+      "overlay": {
+        "semantic_key": "mount-kalaga-wild-crest",
+        "object": "one premium enamel 3D wilderness emblem shaped like layered mountain peaks and pine trees with tiny glowing purple compass halo, turquoise frost reflections, tactile sculpted metal and realistic foliage, absolutely no letters",
+        "animation": "pop",
+        "anchor": [
+          0.76,
+          0.35
+        ],
+        "width": 0.4
+      }
+    },
+    {
+      "narration": "Which part of Leonida are you exploring first?",
+      "background": "vc14"
+    }
+  ]
+}
