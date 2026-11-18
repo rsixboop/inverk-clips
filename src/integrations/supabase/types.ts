@@ -190,6 +190,185 @@ export type Database = {
           },
         ]
       }
+      live_highlights: {
+        Row: {
+          attempts: number
+          chatters: number
+          claim: string | null
+          claim_until: string | null
+          created_at: string
+          detail: string | null
+          emotes: number
+          end_at: string
+          id: string
+          job_id: string | null
+          monitor_id: string
+          offset_s: number | null
+          output_path: string | null
+          peak_at: string
+          score: number
+          start_at: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          chatters: number
+          claim?: string | null
+          claim_until?: string | null
+          created_at?: string
+          detail?: string | null
+          emotes: number
+          end_at: string
+          id?: string
+          job_id?: string | null
+          monitor_id: string
+          offset_s?: number | null
+          output_path?: string | null
+          peak_at: string
+          score: number
+          start_at: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          chatters?: number
+          claim?: string | null
+          claim_until?: string | null
+          created_at?: string
+          detail?: string | null
+          emotes?: number
+          end_at?: string
+          id?: string
+          job_id?: string | null
+          monitor_id?: string
+          offset_s?: number | null
+          output_path?: string | null
+          peak_at?: string
+          score?: number
+          start_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_highlights_monitor_id_fkey"
+            columns: ["monitor_id"]
+            isOneToOne: false
+            referencedRelation: "live_monitors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      live_monitors: {
+        Row: {
+          channel_id: string | null
+          channel_title: string | null
+          created_at: string
+          id: string
+          input: string
+          last_poll_at: string | null
+          lease: string | null
+          lease_until: string | null
+          live_chat_id: string | null
+          live_video_id: string | null
+          media_mode: string
+          messages_seen: number
+          next_poll_at: string
+          page_token: string | null
+          platform: string
+          recording_url: string | null
+          rights_confirmed: boolean
+          stats: Json
+          status: string
+          status_detail: string | null
+          stopped_at: string | null
+          stream_started_at: string | null
+          user_id: string
+        }
+        Insert: {
+          channel_id?: string | null
+          channel_title?: string | null
+          created_at?: string
+          id?: string
+          input: string
+          last_poll_at?: string | null
+          lease?: string | null
+          lease_until?: string | null
+          live_chat_id?: string | null
+          live_video_id?: string | null
+          media_mode?: string
+          messages_seen?: number
+          next_poll_at?: string
+          page_token?: string | null
+          platform: string
+          recording_url?: string | null
+          rights_confirmed?: boolean
+          stats?: Json
+          status?: string
+          status_detail?: string | null
+          stopped_at?: string | null
+          stream_started_at?: string | null
+          user_id: string
+        }
+        Update: {
+          channel_id?: string | null
+          channel_title?: string | null
+          created_at?: string
+          id?: string
+          input?: string
+          last_poll_at?: string | null
+          lease?: string | null
+          lease_until?: string | null
+          live_chat_id?: string | null
+          live_video_id?: string | null
+          media_mode?: string
+          messages_seen?: number
+          next_poll_at?: string
+          page_token?: string | null
+          platform?: string
+          recording_url?: string | null
+          rights_confirmed?: boolean
+          stats?: Json
+          status?: string
+          status_detail?: string | null
+          stopped_at?: string | null
+          stream_started_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      live_workers: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          last_seen_at: string | null
+          token_hash: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_seen_at?: string | null
+          token_hash: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_seen_at?: string | null
+          token_hash?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       news_overlay_assets: {
         Row: {
           asset_key: string

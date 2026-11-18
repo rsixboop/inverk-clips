@@ -1,4 +1,7 @@
 # Inverk Clips roadmap
+- [x] Live highlights: YouTube Live + Twitch monitors, server chat ingestion, adaptive 10s spikes, merge, recorder worker → vertical MP4 job
+- [ ] Live YouTube verification — blocked: YOUTUBE_API_KEY not added
+- [ ] Live recorder MP4 end-to-end — blocked: needs user-owned live stream + recorder running
 - [x] Live new-topic short (Justice score) through normal Studio: fal image-to-video + alpha matting motion objects, exported public/gta6_new_generator_short.mp4
 - [x] Focused fresh paper-map positive path: prior 422 was completed no_media_generated, simplified object prompt succeeded, signed PNGs loaded/imported/exported in normal UI with speech alignment; no replay, $1 reservation barrier retained.
 - [x] Replace regex cues with multilingual planner intents, durable capped fal state assets, phrase timing, and unrelated/no-cue flow verification (live new asset returned no_media_generated; successful new-state visual verification remains blocked by provider result).

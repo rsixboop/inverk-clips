@@ -5,6 +5,7 @@ import { AppShell } from "@/components/studio/AppShell";
 import { useSources } from "@/hooks/use-jobs";
 import { supabase } from "@/integrations/supabase/client";
 import { PERMISSIONS } from "@/lib/job-meta";
+import { LivePanel } from "@/components/studio/LivePanel";
 
 export const Route = createFileRoute("/sources")({
   head: () => ({ meta: [
@@ -25,6 +26,7 @@ function Sources() {
     if (error) toast.error(error.message); else qc.invalidateQueries({ queryKey: ["sources"] });
   }
   return (
+    <div className="space-y-4"><LivePanel />
     <div className="panel overflow-hidden">
       <div className="border-b border-border px-4 py-3"><h1 className="text-base font-bold">Источники</h1>
         <p className="text-xs text-muted-foreground">Используйте только своё видео или материалы с лицензией/разрешением. Источник без указанных прав блокирует рендер.</p></div>
@@ -42,6 +44,6 @@ function Sources() {
           </select>
         </div>
       ))}
-    </div>
+    </div></div>
   );
 }

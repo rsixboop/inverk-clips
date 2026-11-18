@@ -75,6 +75,8 @@ export default {
         if (denied) return denied;
         const { drainJobs } = await import("./server/drain.server");
         waitUntil(drainJobs(8_000).catch((e) => console.error("drain failed", e)));
+        const { drainLive } = await import("./server/live.server");
+        waitUntil(drainLive(25_000).catch((e) => console.error("live drain failed", e)));
         return Response.json({ accepted: true }, { status: 202 });
         }
       }

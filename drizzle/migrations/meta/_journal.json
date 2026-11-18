@@ -36,6 +36,13 @@
       "when": 1794965337185,
       "tag": "0004_news_overlay_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794998734202,
+      "tag": "0005_live_highlights",
+      "breakpoints": true
     }
   ]
 }
