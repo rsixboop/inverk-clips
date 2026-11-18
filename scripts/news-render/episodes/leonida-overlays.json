@@ -16,7 +16,7 @@
   "scenes": [
     {
       "narration": "Think GTA Six is only Vice City? Rockstar has shown a whole state.",
-      "background": "vc16"
+      "background": "vc11"
     },
     {
       "narration": "The Leonida Keys are an entire chain of tropical islands.",
@@ -68,15 +68,16 @@
         "object": "one premium enamel 3D wilderness emblem shaped like layered mountain peaks and pine trees with tiny glowing purple compass halo, turquoise frost reflections, tactile sculpted metal and realistic foliage, absolutely no letters",
         "animation": "pop",
         "anchor": [
-          0.76,
-          0.35
+          0.75,
+          0.82
         ],
         "width": 0.4
       }
     },
     {
       "narration": "Which part of Leonida are you exploring first?",
-      "background": "vc14"
+      "background": "vc01"
     }
-  ]
+  ],
+  "version": 2
 }
