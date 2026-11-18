@@ -25,6 +25,13 @@ export async function handleWorker(request: Request): Promise<Response> {
     return Response.json({ monitors: (data ?? []).map((m) => ({ ...m, record_url: m.media_mode === "recording_url" ? m.recording_url
       : m.platform === "twitch" ? `https://www.twitch.tv/${m.channel_id}` : m.live_video_id ? `https://www.youtube.com/watch?v=${m.live_video_id}` : null })) });
   }
+  if (body.action === "frame") { // visual game check from the recorder's buffer; never blocks capture
+    const b = body as unknown as { monitor_id?: string; frame_at?: string; jpeg_base64?: string; unavailable?: string };
+    if (!b.monitor_id || !b.frame_at || Number.isNaN(Date.parse(b.frame_at))) return Response.json({ error: "bad frame" }, { status: 400 });
+    const { MAX_FRAME_BYTES, recordScene } = await import("@/server/live-vision.server");
+    if (b.jpeg_base64 && b.jpeg_base64.length * 0.75 > MAX_FRAME_BYTES) return Response.json({ error: "frame too large" }, { status: 413 });
+    return Response.json(await recordScene(db, uid, b.monitor_id, new Date(b.frame_at), b.jpeg_base64 ?? null, b.unavailable));
+  }
   if (body.action === "claim") {
     const now = new Date().toISOString();
     const { data: due } = await db.from("live_highlights").select("id,monitor_id,start_at,end_at,peak_at,offset_s,attempts").eq("user_id", uid).eq("status", "awaiting_media")

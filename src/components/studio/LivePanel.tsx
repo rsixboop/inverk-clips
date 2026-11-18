@@ -17,6 +17,7 @@ export function LivePanel() {
   const creds = useQuery({ queryKey: ["live-creds"], queryFn: () => status() }).data;
   const monitors = useQuery({ queryKey: ["live-monitors"], queryFn: async () => (await supabase.from("live_monitors").select("*").order("created_at", { ascending: false })).data ?? [], refetchInterval: 5000 }).data ?? [];
   const hl = useQuery({ queryKey: ["live-highlights"], queryFn: async () => (await supabase.from("live_highlights").select("*").order("start_at", { ascending: false }).limit(100)).data ?? [], refetchInterval: 5000 }).data ?? [];
+  const scenes = useQuery({ queryKey: ["live-scenes"], queryFn: async () => (await supabase.from("live_scene_checks").select("*").order("frame_at", { ascending: false }).limit(60)).data ?? [], refetchInterval: 10000 }).data ?? [];
   const active = monitors.some((m) => m.status !== "stopped");
   // Open tab drives polling (the minute cron does it on the published app).
   useEffect(() => { if (!active) return; let on = true; const loop = async () => { while (on) { try { await tick(); } catch { /* shown via status */ } await new Promise((r) => setTimeout(r, 2000)); } }; loop(); return () => { on = false; }; }, [active, tick]);
@@ -46,6 +47,9 @@ export function LivePanel() {
                 : <button onClick={() => act({ data: { id: m.id, action: "stop" } }).then(refresh)} className="rounded border border-border px-2 text-xs">Стоп</button>}
                 <button onClick={async () => { await supabase.from("live_monitors").delete().eq("id", m.id); refresh(); }} className="rounded border border-border px-2 text-xs">Удалить</button></span></div>
             {m.status_detail && <div className={`text-xs ${m.status === "blocked" ? "text-warning" : "text-muted-foreground"}`}>{m.status_detail}</div>}
+            <div className="mt-1 font-mono text-[11px] text-muted-foreground">Экран: {(() => { const sc = scenes.filter((x) => x.monitor_id === m.id);
+              if (!sc.length) return m.media_mode === "recorder" ? "ждёт кадров от рекордера" : "недоступно — кадры берутся только из записи рекордера";
+              return sc.slice(0, 5).map((x) => `${t(x.frame_at)} ${x.activity === "unavailable" ? "недоступно" : `${x.game ?? "игра не определена"} · ${x.activity}`}${x.switched_from ? ` (смена с ${x.switched_from})` : ""}`).join(" ← "); })()}</div>
             {mine.map((h) => (
               <div key={h.id} className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px]">
                 <span>{t(h.start_at)}–{t(h.end_at)}</span><span>пик {t(h.peak_at)}{h.offset_s != null ? ` · ${Math.floor(Number(h.offset_s) / 60)}:${String(Math.floor(Number(h.offset_s) % 60)).padStart(2, "0")} от начала` : ""}</span>

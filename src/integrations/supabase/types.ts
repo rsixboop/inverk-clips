@@ -342,6 +342,53 @@ export type Database = {
         }
         Relationships: []
       }
+      live_scene_checks: {
+        Row: {
+          activity: string
+          confidence: number | null
+          created_at: string
+          frame_at: string
+          game: string | null
+          id: string
+          monitor_id: string
+          note: string | null
+          switched_from: string | null
+          user_id: string
+        }
+        Insert: {
+          activity: string
+          confidence?: number | null
+          created_at?: string
+          frame_at: string
+          game?: string | null
+          id?: string
+          monitor_id: string
+          note?: string | null
+          switched_from?: string | null
+          user_id: string
+        }
+        Update: {
+          activity?: string
+          confidence?: number | null
+          created_at?: string
+          frame_at?: string
+          game?: string | null
+          id?: string
+          monitor_id?: string
+          note?: string | null
+          switched_from?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_scene_checks_monitor_id_fkey"
+            columns: ["monitor_id"]
+            isOneToOne: false
+            referencedRelation: "live_monitors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       live_workers: {
         Row: {
           created_at: string

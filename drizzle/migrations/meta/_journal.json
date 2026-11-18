@@ -43,6 +43,13 @@
       "when": 1794998734202,
       "tag": "0005_live_highlights",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794999376093,
+      "tag": "0006_live_scene_checks",
+      "breakpoints": true
     }
   ]
 }

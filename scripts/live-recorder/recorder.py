@@ -8,7 +8,7 @@ uploads to a one-time signed URL and reports completion. Recording-URL monitors 
 
   INVERK_URL=https://prompt-to-pocket-clips.lovable.app INVERK_WORKER_TOKEN=lrw_... python3 recorder.py
 """
-import calendar, glob, json, os, shutil, signal, subprocess, sys, tempfile, time, urllib.request
+import base64, calendar, glob, threading, json, os, shutil, signal, subprocess, sys, tempfile, time, urllib.request
 
 APP = os.environ.get("INVERK_URL", "").rstrip("/"); TOKEN = os.environ.get("INVERK_WORKER_TOKEN", "")
 BUF = os.environ.get("INVERK_BUFFER_DIR", os.path.join(tempfile.gettempdir(), "inverk-live"))
@@ -75,11 +75,32 @@ def process(h, mon):
         urllib.request.urlopen(req, timeout=300).read()
         print("uploaded", h["id"], len(data), api("complete", id=h["id"], claim=h["claim"]), flush=True)
 
+SCENE_S = int(os.environ.get("INVERK_SCENE_SECONDS", "60"))
+
+def scene_loop():
+    """Visual game check: every SCENE_S, one frame from the newest finished segment of each buffering
+    monitor goes to the app's vision check. Runs in its own thread so capture/cutting never waits on it."""
+    while True:
+        time.sleep(SCENE_S)
+        for mid, (ff, _src, _url) in list(procs.items()):
+            try:
+                segs = sorted(glob.glob(os.path.join(BUF, mid, "seg_*.ts")), key=lambda p: int(os.path.basename(p)[4:-3]))
+                now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                if ff.poll() is not None or len(segs) < 2:
+                    api("frame", monitor_id=mid, frame_at=now, unavailable="Рекордер не получает видео этого эфира"); continue
+                seg = segs[-2]; at = int(os.path.basename(seg)[4:-3]) + SEG / 2
+                jpg = subprocess.run(["ffmpeg", "-loglevel", "error", "-ss", str(SEG / 2), "-i", seg, "-frames:v", "1", "-vf", "scale=768:-2", "-q:v", "6", "-f", "image2", "pipe:1"],
+                                     capture_output=True, timeout=30).stdout
+                if not jpg: api("frame", monitor_id=mid, frame_at=now, unavailable="Не удалось извлечь кадр"); continue
+                print("scene", mid, api("frame", monitor_id=mid, frame_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at)), jpeg_base64=base64.b64encode(jpg).decode()), flush=True)
+            except Exception as e: print("scene error", e, flush=True)
+
 def main():
     if not APP or not TOKEN: sys.exit("Set INVERK_URL and INVERK_WORKER_TOKEN")
     for tool in ("ffmpeg",):
         if not shutil.which(tool): sys.exit(f"{tool} not found")
     if not (shutil.which("streamlink") or shutil.which("yt-dlp")): print("warning: no streamlink/yt-dlp — only recording-URL monitors work", flush=True)
+    threading.Thread(target=scene_loop, daemon=True).start()
     while True:
         try:
             mons = sync_monitors()
