@@ -44,7 +44,7 @@ def signature(request: dict, style: dict) -> str:
                 "style": style_signature(style)}
     return hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()[:15]
 
-def alpha_qa(path: Path) -> dict:
+def alpha_qa(path: Path, normalize: bool = True) -> dict:
     with Image.open(path) as src:
         if src.width < 360 or src.height < 360:
             raise ValueError("overlay image too small")
@@ -64,14 +64,19 @@ def alpha_qa(path: Path) -> dict:
         margin = max(18, int(0.06 * max(bw, bh)))
         bounds = (max(0, bbox[0] - margin), max(0, bbox[1] - margin),
                   min(w, bbox[2] + margin), min(h, bbox[3] + margin))
-        trimmed = im.crop(bounds)
-        # Keep alpha transparency and source design, resize only the isolated asset.
-        trimmed.thumbnail((640, 640), Image.Resampling.LANCZOS)
-        if min(trimmed.size) < 140:
-            raise ValueError("visible object cropped too small")
-        trimmed.save(path, format="PNG", optimize=True)
+        if normalize:
+            trimmed = im.crop(bounds)
+            # One-time normalization when asset is created. Reuse/QC must NOT
+            # mutate the saved PNG or repeated runs will shrink it.
+            trimmed.thumbnail((640, 640), Image.Resampling.LANCZOS)
+            if min(trimmed.size) < 140:
+                raise ValueError("visible object cropped too small")
+            trimmed.save(path, format="PNG", optimize=True)
+            size = list(trimmed.size)
+        else:
+            size = [w, h]
         return {"alpha": True, "coverage": round(coverage, 3),
-                "size": list(trimmed.size), "corner_alpha_sum": edge}
+                "size": size, "corner_alpha_sum": edge}
 
 def ensure_overlays(requests: list[dict], style_id: str, episode_id: str,
                     budget_usd: float = 3.0) -> tuple[list[dict], float]:
@@ -94,7 +99,7 @@ def ensure_overlays(requests: list[dict], style_id: str, episode_id: str,
                 old.get("uses", 0) < old.get("max_uses", 5)
                 or episode_id in old.get("episodes", [])):
             # Re-check alpha, do not trust a metadata flag without the PNG.
-            check = alpha_qa(target)
+            check = alpha_qa(target, normalize=False)
             old["qc"] = check
             if episode_id not in old.get("episodes", []):
                 old.setdefault("episodes", []).append(episode_id)
