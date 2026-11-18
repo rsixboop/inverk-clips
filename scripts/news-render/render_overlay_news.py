@@ -62,7 +62,7 @@ def validate_episode(episode):
     overlay_count=0
     for s in scenes:
         name=s["background"]
-        if name not in ("vc16","vc14","vc11","vc02","lk01","gr02","pg06","mk02","am01","vc04","vc20"):
+        if name not in ("vc16","vc14","vc11","vc02","vc01","lk01","gr02","pg06","mk02","am01","vc04","vc20"):
             raise ValueError("background not in verified local Rockstar media")
         if not (ROOT/"public/gta6-media"/(name+".jpg")).exists():
             raise FileNotFoundError(name)
