@@ -2,9 +2,11 @@
 // scores distinct chatters + emote weight against an adaptive per-channel baseline (EWMA mean/variance,
 // spike buckets excluded). Spikes become pre/post windows that merge when they overlap.
 export const BUCKET_MS = 10_000, PRE_MS = 20_000, POST_MS = 15_000, MERGE_GAP_MS = 5_000, WARMUP = 6;
-export type ChatEvent = { ts: number; author: string; emotes: number };
+export type ChatEvent = { ts: number; author: string; emotes: number; text?: string };
+/** Per-user reaction units per bucket are capped so one spammer cannot fake a spike. */
+export const USER_UNIT_CAP = 3;
 export type Window = { start: number; end: number; peak: number; score: number; chatters: number; emotes: number };
-export type DetectorState = { bucket?: number | undefined; authors: string[]; emotes: number; mean: number; var: number; n: number; last?: Window };
+export type DetectorState = { bucket?: number | undefined; authors: string[]; emotes: number; units?: Record<string, number>; mean: number; var: number; n: number; last?: Window };
 export const emptyDetector = (): DetectorState => ({ authors: [], emotes: 0, mean: 0, var: 0, n: 0 });
 
 export function bucketScore(chatters: number, emotes: number) { return chatters + 0.5 * Math.min(emotes, chatters * 4); }
@@ -36,7 +38,7 @@ export function feed(s: DetectorState, events: ChatEvent[], now: number, continu
   const flushTo = (b: number) => {
     while (s.bucket !== undefined && s.bucket < b) {
       emit(close(s, s.bucket, new Set(s.authors).size, s.emotes));
-      s.authors = []; s.emotes = 0;
+      s.authors = []; s.emotes = 0; s.units = {};
       s.bucket = continuous && s.bucket + BUCKET_MS < b ? s.bucket + BUCKET_MS : undefined;
     }
   };
@@ -44,7 +46,10 @@ export function feed(s: DetectorState, events: ChatEvent[], now: number, continu
     const b = Math.floor(e.ts / BUCKET_MS) * BUCKET_MS;
     if (s.bucket !== undefined && b < s.bucket) continue; // late event for a closed bucket
     flushTo(b); if (s.bucket === undefined) s.bucket = b;
-    s.authors.push(e.author); s.emotes += e.emotes;
+    s.authors.push(e.author);
+    const units = (s.units ??= {}), had = units[e.author] ?? 0;
+    const add = Math.min(USER_UNIT_CAP - had, e.emotes + (e.text ? countReactions(e.text) : 0));
+    if (add > 0) { units[e.author] = had + add; s.emotes += add; }
   }
   flushTo(Math.floor(now / BUCKET_MS) * BUCKET_MS);
   return [...out.values()];
@@ -71,3 +76,15 @@ export function parseLiveInput(raw: string): ParsedLive | null {
   if (parts[0] === "channel" && parts[1]) return { platform: "youtube", channelId: parts[1] };
   return null;
 }
+
+// Mixed RU/EN laughter/shock words and text emotes (BTTV/7TV/Twitch names users type). Text is normalized:
+// lowercase, ё→е, letter runs of 3+ collapsed to 2, so "АХАХАХАХ", "ахахаха", "hahahaHA" all match.
+const REACTION_RE = new RegExp([
+  "(?:а?х(?:а|е|и)){2,}х?", "(?:х(?:а|е)){2,}", "ору+", "оруу", "жесть", "жеесть", "лол", "кек", "капец", "пипец", "офигеть", "ничего себе", "нифига",
+  "a?(?:h(?:a|e|i)){2,}h?", "lo+l", "lmf?a+o+", "rofl", "omg", "no way", "wtf", "kekw?", "lul", "omegalul", "pog(?:gers|champ|u)?", "monkas", "pepelaugh", "sadge", "icant", "xd+",
+].map((x) => `(?<![\\p{L}\\p{N}])${x}(?![\\p{L}\\p{N}])`).join("|"), "gu");
+export function normalizeChat(text: string) {
+  return text.toLowerCase().replace(/ё/g, "е").replace(/(\p{L})\1{2,}/gu, "$1$1").replace(/\s+/g, " ").trim();
+}
+/** Number of reaction tokens in one message (caller caps per user per bucket). */
+export function countReactions(text: string) { return normalizeChat(text).match(REACTION_RE)?.length ?? 0; }
