@@ -76,8 +76,8 @@
     },
     {
       "narration": "Which part of Leonida are you exploring first?",
-      "background": "vc01"
+      "background": "vc11"
     }
   ],
-  "version": 2
+  "version": 3
 }
