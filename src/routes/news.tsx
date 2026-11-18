@@ -233,11 +233,11 @@ function News() {
           <div className="text-muted-foreground">{voice ? `Загружено: ${voice.name}` : "Озвучка не загружена — экспорт будет без звука."}</div></div>
       </div>
       <div className="panel p-3 space-y-2">
-        <div className="rounded-md border border-border p-2 space-y-1">
-          <b className="text-xs">GTA VI · 212 ГБ — последняя редакторская основа</b>
-          <video controls playsInline preload="metadata" src="/gta6_212gb_news.mp4" className="w-full rounded bg-muted" />
-          <a href="/gta6_212gb_news.mp4" download="gta6_212gb_news.mp4" className="block text-xs text-primary underline">Скачать предыдущий новостной ролик</a>
-          <p className="text-[11px] text-muted-foreground">Экспериментальные AI-сцены PS5 <a href="/gta6_ps5_5_generated_assets.mp4" target="_blank" rel="noreferrer" className="underline">доступны отдельно</a>, но не являются утверждённым шаблоном новостей.</p>
+        <div className="rounded-md border border-primary/40 p-2 space-y-1">
+          <b className="text-xs">Новый выпуск · Леонида за пределами Vice City · 4 прозрачных AI-ассета</b>
+          <video controls playsInline preload="metadata" src="/gta6_leonida_overlay_news.mp4" className="w-full rounded bg-muted" />
+          <a href="/gta6_leonida_overlay_news.mp4" download="gta6_leonida_overlay_news.mp4" className="block text-xs text-primary underline">Скачать новый MP4</a>
+          <p className="text-[11px] text-muted-foreground">Отдельные объекты с прозрачностью накладываются поверх официальных GTA VI скриншотов; они не заменяют исходный видеоряд. <a href="/gta6_212gb_news.mp4" target="_blank" rel="noreferrer" className="underline">Предыдущий новостной ролик</a></p>
         </div>
         <p className="text-[11px] text-muted-foreground">Для сравнения: <a href="/gta6_cloud_v2.mp4" target="_blank" rel="noreferrer" className="underline">V2</a> · <a href="/gta6_cloud_v3.mp4" target="_blank" rel="noreferrer" className="underline">V3</a> · <a href="/gta6_cloud_v4.mp4" target="_blank" rel="noreferrer" className="underline">V4</a></p>
         <canvas ref={canvas} width={W} height={H} className="aspect-[9/16] w-full rounded bg-muted" />
