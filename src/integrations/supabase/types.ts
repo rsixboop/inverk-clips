@@ -190,6 +190,51 @@ export type Database = {
           },
         ]
       }
+      news_overlay_assets: {
+        Row: {
+          asset_key: string
+          batch_key: string
+          claim: string | null
+          phase: string
+          state: Json
+          user_id: string
+        }
+        Insert: {
+          asset_key: string
+          batch_key: string
+          claim?: string | null
+          phase?: string
+          state?: Json
+          user_id: string
+        }
+        Update: {
+          asset_key?: string
+          batch_key?: string
+          claim?: string | null
+          phase?: string
+          state?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
+      news_overlay_batches: {
+        Row: {
+          cache_key: string
+          reserved_usd: number
+          user_id: string
+        }
+        Insert: {
+          cache_key: string
+          reserved_usd?: number
+          user_id: string
+        }
+        Update: {
+          cache_key?: string
+          reserved_usd?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       niches: {
         Row: {
           created_at: string
@@ -381,7 +426,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      reserve_news_overlay: {
+        Args: {
+          p_asset: string
+          p_batch: string
+          p_cost: number
+          p_state: Json
+          p_user: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

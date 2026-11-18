@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { isNewswireUrl } from "@/lib/news-article";
+import { builtinOverlayAssets } from "./news-overlay-plan";
 
 export const findNewswire = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).handler(async () => {
   const { tavilyConfigured, tavilySearch } = await import("@/lib/providers/tavily");
@@ -14,8 +15,12 @@ export const findNewswire = createServerFn({ method: "POST" }).middleware([requi
 });
 
 export const scriptFromArticle = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ url: z.string().max(300).refine(isNewswireUrl, "Только https://www.rockstargames.com/newswire/article/…") }).parse(d))
-  .handler(async ({ data }) => { const { buildScriptFromArticle } = await import("@/lib/news-script.server"); return buildScriptFromArticle(data.url); });
+  .inputValidator((d) => z.object({ url: z.string().max(300).refine(isNewswireUrl, "Только https://www.rockstargames.com/newswire/article/…"),language:z.enum(["EN","RU","UK"]).default("EN") }).parse(d))
+  .handler(async ({ data,context }) => {
+    const {data:cache}=await context.supabase.from("news_overlay_assets").select("asset_key,state").eq("user_id",context.userId).limit(40);
+    const catalog=(cache ?? []).flatMap(row=>{const state=row.state as {step?:number;intent?:unknown};return state.step===6?[{key:row.asset_key,intent:state.intent}]:[];});
+    const { buildScriptFromArticle } = await import("@/lib/news-script.server"); return buildScriptFromArticle(data.url,data.language,[...builtinOverlayAssets,...catalog]);
+  });
 
 // Broad recent GTA VI news (any site). Non-official sources are flagged; nothing is generated from snippets.
 export const findGtaNews = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).handler(async () => {

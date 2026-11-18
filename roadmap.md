@@ -1,4 +1,5 @@
 # Inverk Clips roadmap
+- [x] Replace regex cues with multilingual planner intents, durable capped fal state assets, phrase timing, and unrelated/no-cue flow verification (live new asset returned no_media_generated; successful new-state visual verification remains blocked by provider result).
 - [x] Optional semantic cues in Python and Studio generation/preview/export; verify zero/one and playable 212 GB example.
 - [x] Data model, auth, private storage, RLS
 - [x] Compose: grounded Tavily research, permitted library media, queued Atlas TTS and fal assembly

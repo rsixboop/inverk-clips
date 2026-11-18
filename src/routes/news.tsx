@@ -8,6 +8,8 @@ import { findGtaNews, findNewswire, scriptFromArticle } from "@/lib/news-script.
 import { planTimeline } from "@/lib/news-timeline";
 import { drawOverlayCues, loadOverlayImages, validateOverlayCues } from "@/lib/news-overlays";
 import { Button } from "@/components/ui/button";
+import { alignNewsSpeech, resolveNewsOverlay } from "@/lib/news-overlay.functions";
+import { timeOverlayIntent, type SpeechWord } from "@/lib/news-overlay-plan";
 import { MEDIA_LIBRARY, NEWS_SOURCE, PILOT, pilotValid, totalSeconds, type Shot } from "@/lib/news-pilot";
 
 export const Route = createFileRoute("/news")({
@@ -30,6 +32,12 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, max: number) {
 
 function News() {
   const [shots, setShots] = useState<Shot[]>(PILOT);
+  const [language,setLanguage]=useState<"EN"|"RU"|"UK">("EN");
+  const [overlayBusy,setOverlayBusy]=useState(false);
+  const [overlayMessage,setOverlayMessage]=useState("");
+  const [speechWords,setSpeechWords]=useState<SpeechWord[]>([]);
+  const overlayFn=useServerFn(resolveNewsOverlay),alignFn=useServerFn(alignNewsSpeech);
+  const preparedCues=useRef<NonNullable<Shot["overlay_cues"]>[]>([]);
   const [angle, setAngle] = useState("");
   const [media, setMedia] = useState<Media[]>(() => pickAssets(PILOT).map((id) => { const a = findAsset(id); return a ? { url: mediaUrl(a.id), video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
   const [source, setSource] = useState(NEWS_SOURCE);
@@ -41,8 +49,8 @@ function News() {
   const [approved, setApproved] = useState(true);
   const findFn = useServerFn(findNewswire), scriptFn = useServerFn(scriptFromArticle);
   const search = async () => { setNw({ busy: true, msg: "Ищу на Rockstar Newswire…" }); try { const r = await findFn(); setFound(r.items); setNw({ busy: false, msg: r.error }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
-  const makeScript = async () => { setNw({ busy: true, msg: "Читаю статью и пишу сценарий…" }); try { const r = await scriptFn({ data: { url: source } });
-    const ns: Shot[] = r.shots.map((x) => ({ text: x.text, seconds: x.seconds, material: `Факт: «${x.fact}»`, caption: x.caption, fact: x.fact, brief: x.brief, role: x.role, overlay_cues: x.overlay_cues ?? [] })); setShots(ns); setAngle(r.angle); setApproved(false); setVoice(null);
+  const makeScript = async () => { setNw({ busy: true, msg: "Читаю статью и пишу сценарий…" }); try { const r = await scriptFn({ data: { url: source,language } });
+    const ns: Shot[] = r.shots.map((x) => ({ text: x.text, seconds: x.seconds, material: `Факт: «${x.fact}»`, caption: x.caption, fact: x.fact, brief: x.brief, role: x.role, overlay_cues: x.overlay_cues ?? [],overlay_intents:x.overlay_intents ?? [] })); setShots(ns); setAngle(r.angle); setApproved(false); setVoice(null);setSpeechWords([]);setOverlayMessage(r.shots.flatMap(x=>x.overlay_warnings ?? []).join("; "));
     setMedia((m) => pickAssets(ns).map((id, k) => { const a = ns[k]!.role === "evidence" ? undefined : findAsset(id); return a ? { url: mediaUrl(a.id), video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
     setNw({ busy: false, msg: "Сценарий готов. Проверьте и утвердите перед озвучкой." }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
   const [allowed, setAllowed] = useState(false);
@@ -83,7 +91,48 @@ function News() {
   const plan = planTimeline(shots, media.map((m) => (m ? { video: m.video, catalog: m.name.startsWith("Rockstar"), duration: m.duration } : null)), voiceSec);
   const recRef = useRef<MediaRecorder | null>(null);
   const busyRef = useRef(false); const [busy, setBusy] = useState(false);
-  const ready = approved && allowed && media.every((m) => m?.state === "ok") && pilotValid(shots) && !plan.errors.length && (!voice || voiceSec != null) && !busy;
+  const ready = approved && allowed && media.every((m) => m?.state === "ok") && pilotValid(shots) && !plan.errors.length && (!voice || voiceSec != null) && !busy && !overlayBusy;
+  async function prepareObjects() {
+    if(overlayBusy)return;setOverlayBusy(true);
+    const messages:string[]=[];
+    try{
+      const intents=shots.flatMap(s=>s.overlay_intents ?? []);
+      if(!intents.length){setOverlayMessage("Сценарий не требует объектов");return;}
+      const audioBytes=voice?new Uint8Array(await (await fetch(voice.url)).arrayBuffer()):new Uint8Array();
+      const digest=await crypto.subtle.digest("SHA-256",new Uint8Array([...new TextEncoder().encode(shots.map(s=>s.text).join(" ")),...audioBytes]));
+      const batch=[...new Uint8Array(digest)].map(v=>v.toString(16).padStart(2,"0")).join("");
+      let words=speechWords;
+      if(!words.length && voice){
+        let response=await alignFn({data:{batch}});
+        if(response.status==="need_audio"){
+          let binary="";audioBytes.forEach(v=>binary+=String.fromCharCode(v));
+          const mime=voice.name.toLowerCase().endsWith(".mp3")?"audio/mpeg" as const:voice.name.toLowerCase().endsWith(".m4a")?"audio/mp4" as const:"audio/wav" as const;
+          response=await alignFn({data:{batch,audio:btoa(binary),mime}});
+        }
+        for(let attempt=0;response.status==="pending" && attempt<90;attempt++) {setOverlayMessage("Сопоставляю фразы с озвучкой…");await new Promise(r=>setTimeout(r,2000));response=await alignFn({data:{batch}});}
+        if(response.status==="done"){words=response.words;setSpeechWords(words);}else messages.push("Нет надёжных таймкодов — объекты пропущены");
+      }
+      const updated:Shot[]=[];
+      for(let i=0;i<shots.length;i++){
+        const s=shots[i];if(!s)continue;
+        const offset=plan.seconds.slice(0,i).reduce((a,b)=>a+b,0),length=plan.seconds[i] ?? s.seconds;
+        const localWords=words.map(w=>({...w,start:w.start-offset,end:w.end-offset}));
+        const cues=[...(s.overlay_cues ?? [])];
+        for(const intent of s.overlay_intents ?? []){
+          const timed=timeOverlayIntent(intent,localWords,length);
+          if(!timed){messages.push(`Шот ${i+1}: фраза не сопоставлена, объект пропущен`);continue;}
+          let response=await overlayFn({data:{batch,narration:s.text,intent}});
+          for(let attempt=0;response.status==="pending" && attempt<150;attempt++) {setOverlayMessage(response.message);await new Promise(r=>setTimeout(r,2000));response=await overlayFn({data:{batch,narration:s.text,intent}});}
+          if(response.status==="done"){
+            const [before,active,result]=response.paths;
+            if(before&&active&&result && !cues.some(c=>c.speech===timed.speech))cues.push({...timed,before,active,result,...(response.key==="builtin:download-vault"?{fill_region:[.108,.455,.85,.67] as [number,number,number,number]}:{})});
+          }else messages.push(response.message);
+        }
+        updated.push({...s,overlay_cues:cues,speech_words:localWords});
+      }
+      setShots(updated);setOverlayMessage(messages.join("; ") || "Объекты готовы · сохранены в кэше");
+    }catch(error){setOverlayMessage(`Объекты пропущены: ${(error as Error).message}`);}finally{setOverlayBusy(false);}
+  }
 
   useEffect(() => { els.current = media.map((m) => { if (!m) return null;
     if (m.video) { const v = document.createElement("video"); v.src = m.url; v.muted = true; v.playsInline = true; return v; }
@@ -120,7 +169,7 @@ function News() {
       ctx.textAlign = "center"; ctx.font = "32px sans-serif"; ctx.fillStyle = "#fff";
       ctx.fillText("Source: Rockstar Newswire", W / 2, H - 140);
     }
-    drawOverlayCues(ctx, shots[i]?.overlay_cues ?? [], overlayImages.current, speechTime);
+    drawOverlayCues(ctx, preparedCues.current[i] ?? [], overlayImages.current, speechTime);
   }
 
   function voiceNode() {
@@ -149,12 +198,21 @@ function News() {
     setOut(null);
     if (record && plan.errors.length) throw new Error(plan.errors.join("; "));
     setStatus("Жду декодирования всех материалов…"); await decodeAll(record);
-    const cues = shots.flatMap((s,i) => {
-      const list = validateOverlayCues(s.overlay_cues, plan.seconds[i] ?? s.seconds);
-      if (list.some(c => !s.text.includes(c.speech))) throw new Error(`Шот ${i+1}: фраза оверлея отсутствует в озвучке`);
-      return list;
-    });
-    overlayImages.current = await loadOverlayImages(cues);
+    preparedCues.current=[];overlayImages.current=new Map();
+    for(const [i,s] of shots.entries()){
+      const usable:NonNullable<Shot["overlay_cues"]>=[];
+      for(const cue of s.overlay_cues ?? []){
+        try{
+          if(!s.text.includes(cue.speech))continue;
+          if(!cue.before.startsWith("/overlay-library/") && !cue.before.includes("/object/sign/outputs/"))continue;
+          if(!cue.before.startsWith("/overlay-library/")){
+            if(!(0<=cue.start && cue.start<cue.action && cue.action<cue.after && cue.after<cue.end && cue.end<=(plan.seconds[i] ?? s.seconds)))continue;
+          }else validateOverlayCues([cue],plan.seconds[i] ?? s.seconds);
+          const images=await loadOverlayImages([cue]);images.forEach((image,path)=>overlayImages.current.set(path,image));usable.push(cue);
+        }catch{setOverlayMessage("Непригодные состояния пропущены; исходный видеоряд сохранён");}
+      }
+      preparedCues.current.push(usable);
+    }
     draw(0, 0); // first frame is on the canvas before recording/audio start
     const a = voiceNode();
     if (a) { await a.ctx.resume(); a.el.currentTime = 0; }
@@ -195,7 +253,7 @@ function News() {
     } else setStatus("Предпросмотр завершён.");
   }
 
-  const upd = (i: number, p: Partial<Shot>) => { setShots((s) => s.map((x, k) => (k === i ? { ...x, ...p } : x))); setApproved(false); setVoice(null); };
+  const upd = (i: number, p: Partial<Shot>) => { setShots((s) => s.map((x, k) => (k === i ? { ...x, ...p,...(p.text?{overlay_intents:[],overlay_cues:[]}: {}) } : x))); setApproved(false); setVoice(null);setSpeechWords([]); };
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
       <div className="panel p-4 space-y-3">
@@ -211,6 +269,7 @@ function News() {
           {found.map((f) => <label key={f.url} className="flex gap-2"><input type="radio" checked={source === f.url} onChange={() => setSource(f.url)} />{f.title} {f.date && <span className="text-muted-foreground">{f.date}</span>}</label>)}
           <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="https://www.rockstargames.com/newswire/article/…" className="h-7 w-full rounded border border-input bg-muted px-2" />
           <button disabled={nw.busy} onClick={makeScript} className="h-7 rounded-md bg-primary px-2 text-primary-foreground">Сценарий</button>
+          <select aria-label="Язык сценария" value={language} onChange={e=>setLanguage(e.target.value as "EN"|"RU"|"UK")} className="h-7 border border-input bg-muted text-xs"><option>EN</option><option>RU</option><option>UK</option></select>
           {nw.msg && <p className="text-muted-foreground">{nw.msg}</p>}
           {!approved && <button onClick={() => setApproved(true)} className="h-7 rounded-md border border-primary px-2 text-primary">Утвердить сценарий</button>}
         </div>
@@ -225,6 +284,7 @@ function News() {
             <input value={s.caption ?? ""} placeholder="Экранная подпись (пусто = без заголовка)" onChange={(e) => upd(i, { caption: e.target.value })} className="w-full rounded border border-input bg-muted p-1 text-xs" />
             <details className="text-xs">
               <summary>Смысловые объекты · {s.overlay_cues?.length ?? 0}</summary>
+              {(s.overlay_intents ?? []).map((intent,k)=><p key={k}>{intent.purpose} · «{intent.phrase}» · {intent.before} → {intent.action} → {intent.after}</p>)}
               {(s.overlay_cues ?? []).map((c,k) => <div key={k} className="py-1"><b>{c.purpose}</b> · «{c.speech}» · {c.start} → {c.action} → {c.after} → {c.end} с <Button size="sm" variant="ghost" onClick={() => upd(i,{overlay_cues: (s.overlay_cues ?? []).filter((_,j)=>j!==k)})}>Удалить</Button></div>)}
               <input aria-label={`Смысловые объекты шота ${i+1}`} type="file" accept="application/json" onChange={async e => { const f=e.target.files?.[0]; if (!f) return; try { const input=JSON.parse(await f.text()); upd(i,{overlay_cues:validateOverlayCues(input,plan.seconds[i] ?? s.seconds)}); } catch(error) { setStatus((error as Error).message); } }} />
             </details>
@@ -246,6 +306,8 @@ function News() {
           <div className="text-muted-foreground">Платно: списывается с баланса fal.ai. Повторно не отправляется.</div>
           {tts.msg && <div className="break-all">{tts.msg}</div>}
           <div className="text-muted-foreground">{voice ? `Загружено: ${voice.name}` : "Озвучка не загружена — экспорт будет без звука."}</div></div>
+        <Button variant="outline" size="sm" disabled={overlayBusy || !approved || !voice} onClick={prepareObjects}>Подготовить смысловые объекты · лимит $1 fal</Button>
+        <p className="text-xs text-muted-foreground">{overlayMessage}</p>
       </div>
       <div className="panel p-3 space-y-2">
         <div className="border-b border-border pb-2 space-y-1">

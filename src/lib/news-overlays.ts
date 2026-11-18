@@ -3,15 +3,6 @@ export type OverlayCue = {
   before: string; active: string; result: string; box: [number, number, number, number];
   fill_region?: [number,number,number,number];
 };
-// Only choose a cached object when the spoken line actually explains its change.
-// Other topics default to zero; never add a decorative object to fill a quota.
-export function suggestOverlayCues(text: string, seconds: number): OverlayCue[] {
-  if (!/download|preload/i.test(text) || !/not|doesn.t|≠/i.test(text) || !/early|access|play/i.test(text) || seconds < 2) return [];
-  const path="/overlay-library/clean-tech/300b6a9bc7ed8b4/";
-  return [{ purpose:"Downloading does not grant early access", speech:text, start:0,
-    action:seconds*0.15, after:seconds*0.62, end:seconds,
-    before:path+"before.png",active:path+"active.png",result:path+"result.png",box:[0,0.86,1,0.14],fill_region:[0.108,0.455,0.85,0.67] }];
-}
 export function validateOverlayCues(input: unknown, duration: number): OverlayCue[] {
   if (input == null) return [];
   if (!Array.isArray(input)) throw new Error("Оверлеи должны быть списком");
@@ -34,7 +25,7 @@ export function overlayState(c: OverlayCue, time: number) {
 export async function loadOverlayImages(cues: OverlayCue[]) {
   const images = new Map<string, HTMLImageElement>();
   await Promise.all([...new Set(cues.flatMap(c => [c.before,c.active,c.result]))].map(async path => {
-    const im = new Image(); im.src = path; await im.decode();
+    const im = new Image(); im.crossOrigin="anonymous"; im.src = path; await im.decode();
     const canvas = document.createElement("canvas"); canvas.width = im.width; canvas.height = im.height;
     const ctx = canvas.getContext("2d"); if (!ctx) throw new Error("Canvas unavailable");
     ctx.drawImage(im,0,0); const pixels = ctx.getImageData(0,0,im.width,im.height).data;
@@ -49,7 +40,7 @@ export function drawOverlayCues(ctx: CanvasRenderingContext2D, cues: OverlayCue[
     const [bx,by,bw,bh] = c.box;
     const x=bx*ctx.canvas.width, y=by*ctx.canvas.height, w=bw*ctx.canvas.width, h=bh*ctx.canvas.height;
     const image=images.get(c[state.name]); if (!image) throw new Error("Объект не загружен");
-    if (state.name === "active") {
+    if (state.name === "active" && c.fill_region) {
       const before=images.get(c.before); if (before) ctx.drawImage(before,x,y,w,h);
       const [l,t,r,b]=c.fill_region ?? [0,0,1,1];
       ctx.save(); ctx.beginPath(); ctx.rect(x+l*w,y+t*h,(r-l)*w*state.progress,(b-t)*h); ctx.clip(); ctx.drawImage(image,x,y,w,h); ctx.restore();

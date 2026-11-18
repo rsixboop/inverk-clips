@@ -1,0 +1,1 @@
+News overlays use planner-owned language-independent physical-state intents, uniquely matched real speech words, per-user private cached assets, and atomic reserved-cost submission barriers; this avoids topic regexes, guessed timing, and duplicate paid submissions.
