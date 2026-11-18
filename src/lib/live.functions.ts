@@ -25,6 +25,17 @@ export const addMonitor = createServerFn({ method: "POST" }).middleware([require
     return row;
   });
 
+/** Switch an existing monitor's media mode in place; peaks already found stay as they are. */
+export const setMediaMode = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid(), media_mode: z.enum(["timestamp_only", "recorder"]), rights: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    if (data.media_mode === "recorder" && !data.rights) throw new Error("Запись только для своего эфира или с разрешением правообладателя — подтвердите права");
+    const { error } = await (await admin()).from("live_monitors").update({ media_mode: data.media_mode, ...(data.media_mode === "recorder" ? { rights_confirmed: true } : {}) })
+      .eq("id", data.id).eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const monitorAction = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((d: unknown) => z.object({ id: z.string().uuid(), action: z.enum(["start", "stop"]) }).parse(d))
   .handler(async ({ data, context }) => {
     const db = await admin();

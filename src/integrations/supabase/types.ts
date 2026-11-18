@@ -281,6 +281,7 @@ export type Database = {
           next_poll_at: string
           page_token: string | null
           platform: string
+          recorder_state: Json | null
           recording_url: string | null
           rights_confirmed: boolean
           stats: Json
@@ -306,6 +307,7 @@ export type Database = {
           next_poll_at?: string
           page_token?: string | null
           platform: string
+          recorder_state?: Json | null
           recording_url?: string | null
           rights_confirmed?: boolean
           stats?: Json
@@ -331,6 +333,7 @@ export type Database = {
           next_poll_at?: string
           page_token?: string | null
           platform?: string
+          recorder_state?: Json | null
           recording_url?: string | null
           rights_confirmed?: boolean
           stats?: Json

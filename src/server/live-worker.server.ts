@@ -7,6 +7,8 @@ export async function hashToken(t: string) {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
   return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
 }
+// A highlight is claimable once its 15 s post-roll plus one 10 s segment have been written.
+const POST_ROLL_WAIT_MS = 30_000;
 const MAX_ATTEMPTS = 3, CLAIM_MS = 15 * 60_000, MAX_BYTES = 80 * 1024 * 1024;
 
 export async function handleWorker(request: Request): Promise<Response> {
@@ -25,6 +27,17 @@ export async function handleWorker(request: Request): Promise<Response> {
     return Response.json({ monitors: (data ?? []).map((m) => ({ ...m, record_url: m.media_mode === "recording_url" ? m.recording_url
       : m.platform === "twitch" ? `https://www.twitch.tv/${m.channel_id}` : m.live_video_id ? `https://www.youtube.com/watch?v=${m.live_video_id}` : null })) });
   }
+  if (body.action === "status") { // recorder heartbeat: per-monitor buffer/ready/error, shown in Sources
+    const list = Array.isArray((body as any).monitors) ? (body as any).monitors.slice(0, 20) : [];
+    const at = new Date().toISOString();
+    for (const m of list) {
+      if (typeof m?.id !== "string") continue;
+      const state = { at, version: String((body as any).version ?? "").slice(0, 20), buffer_s: Math.max(0, Math.min(86400, Number(m.buffer_s) || 0)), ready: m.ready === true,
+        error: m.error ? String(m.error).slice(0, 300) : null, tools: String((body as any).tools ?? "").slice(0, 200) };
+      await db.from("live_monitors").update({ recorder_state: state }).eq("id", m.id).eq("user_id", uid);
+    }
+    return Response.json({ ok: true });
+  }
   if (body.action === "frame") { // visual game check from the recorder's buffer; never blocks capture
     const b = body as unknown as { monitor_id?: string; frame_at?: string; jpeg_base64?: string; unavailable?: string };
     if (!b.monitor_id || !b.frame_at || Number.isNaN(Date.parse(b.frame_at))) return Response.json({ error: "bad frame" }, { status: 400 });
@@ -35,7 +48,7 @@ export async function handleWorker(request: Request): Promise<Response> {
   if (body.action === "claim") {
     const now = new Date().toISOString();
     const { data: due } = await db.from("live_highlights").select("id,monitor_id,start_at,end_at,peak_at,offset_s,attempts").eq("user_id", uid).eq("status", "awaiting_media")
-      .lt("end_at", new Date(Date.now() - 5000).toISOString()).or(`claim_until.is.null,claim_until.lt.${now}`).order("start_at").limit(2);
+      .lt("end_at", new Date(Date.now() - POST_ROLL_WAIT_MS).toISOString()).or(`claim_until.is.null,claim_until.lt.${now}`).order("start_at").limit(2);
     const out = [];
     for (const h of due ?? []) {
       if (h.attempts >= MAX_ATTEMPTS) { await db.from("live_highlights").update({ status: "failed", detail: "Превышено число попыток записи" }).eq("id", h.id); continue; }

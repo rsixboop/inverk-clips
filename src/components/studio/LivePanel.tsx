@@ -4,7 +4,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { TabCapture } from "@/components/studio/TabCapture";
-import { addMonitor, createWorkerToken, highlightUrl, liveStatus, monitorAction, tickLive } from "@/lib/live.functions";
+import { buildWindowsLauncher } from "@/lib/recorder-launcher";
+import { addMonitor, setMediaMode, createWorkerToken, highlightUrl, liveStatus, monitorAction, tickLive } from "@/lib/live.functions";
 
 const ST: Record<string, string> = { resolving: "поиск эфира", live: "в эфире", offline: "не в эфире", blocked: "заблокировано", stopped: "остановлено" };
 const HS: Record<string, string> = { timestamp_only: "только таймкод", awaiting_media: "ждёт запись", claimed: "рекордер режет", done: "MP4 готов", failed: "ошибка", unavailable: "медиа недоступно" };
@@ -15,6 +16,7 @@ const t = (s: string) => new Date(s).toLocaleTimeString("ru");
 
 export function LivePanel() {
   const qc = useQueryClient();
+  const switchMode = useServerFn(setMediaMode); const [swRights, setSwRights] = useState<Record<string, boolean>>({});
   const add = useServerFn(addMonitor), act = useServerFn(monitorAction), tick = useServerFn(tickLive), mkToken = useServerFn(createWorkerToken), dl = useServerFn(highlightUrl), status = useServerFn(liveStatus);
   const [input, setInput] = useState(""); const [mode, setMode] = useState<string>("timestamp_only"); const [rec, setRec] = useState(""); const [rights, setRights] = useState(false); const [token, setToken] = useState("");
   const creds = useQuery({ queryKey: ["live-creds"], queryFn: () => status() }).data;
@@ -53,6 +55,8 @@ export function LivePanel() {
             <div className="mt-1 font-mono text-[11px] text-muted-foreground">Экран: {(() => { const sc = scenes.filter((x) => x.monitor_id === m.id);
               if (!sc.length) return m.media_mode === "recorder" ? "ждёт кадров от рекордера" : "недоступно — кадры берутся только из записи рекордера";
               return sc.slice(0, 5).map((x) => `${t(x.frame_at)} ${x.activity === "unavailable" ? "недоступно" : `${x.game ?? "игра не определена"} · ${x.activity}`}${x.switched_from ? ` (смена с ${x.switched_from})` : ""}`).join(" ← "); })()}</div>
+            <RecorderRow m={m} rights={!!swRights[m.id]} setRights={(v) => setSwRights((x) => ({ ...x, [m.id]: v }))}
+              onSwitch={async (mode) => { try { await switchMode({ data: { id: m.id, media_mode: mode, rights: mode === "timestamp_only" || !!swRights[m.id] } }); refresh(); } catch (e) { toast.error((e as Error).message); } }} />
             {m.platform === "youtube" && <TabCapture monitorId={m.id} />}
             {mine.map((h) => (
               <div key={h.id} className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px]">
@@ -64,11 +68,35 @@ export function LivePanel() {
           </div>);
       })}
       <div className="px-4 py-3 text-xs text-muted-foreground space-y-1">
-        <b className="text-foreground">Рекордер для видео</b>
-        <p>Облачная часть не может держать видеопоток, поэтому видео пишет ваш рекордер (scripts/live-recorder/recorder.py, нужны ffmpeg и streamlink). Он берёт хайлайты, режет окно с оригинальным звуком в вертикаль 1080×1920 и загружает MP4 сюда; готовые клипы появятся в Очереди и Библиотеке.</p>
+        <b className="text-foreground">Рекордер на вашем компьютере (Windows)</b>
+        <p>1. Установите Streamlink для Windows (в нём уже есть ffmpeg). Python возьмётся системный или встроенный в Streamlink; если его нет, запуск подскажет, как поставить.</p>
+        <p>2. Скачайте запуск рекордера и откройте файл двойным щелчком. Он сам скачает актуальный рекордер.</p>
+        <button onClick={() => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([buildWindowsLauncher(window.location.origin)], { type: "application/octet-stream" })); a.download = "inverk-recorder.bat"; a.click(); }} className="rounded border border-border px-2 py-1">Скачать запуск рекордера для Windows (.bat)</button>
+        <p>3. Создайте токен и вставьте его в окно рекордера, когда он попросит (ввод скрыт, токен хранится только у вас в профиле Windows). Новый токен: запустите с параметром --reset-token. macOS/Linux: <a className="underline" href="/recorder/recorder.py" download>recorder.py</a>, нужны Python 3, ffmpeg и streamlink.</p>
         <button onClick={async () => { try { setToken((await mkToken()).token); } catch (e) { toast.error((e as Error).message); } }} className="rounded border border-border px-2 py-1">Создать токен рекордера</button>
-        {token && <p className="break-all font-mono text-foreground">INVERK_URL={typeof window !== "undefined" ? window.location.origin : ""} INVERK_WORKER_TOKEN={token} python3 recorder.py <span className="text-warning">(показан один раз)</span></p>}
+        {token && <p className="break-all font-mono text-foreground">{token} <span className="text-warning">(показан один раз — скопируйте в окно рекордера)</span></p>}
       </div>
     </div>
   );
+}
+
+const ago = (iso: string) => Math.round((Date.now() - Date.parse(iso)) / 1000);
+/** In-place switch timestamp_only ⇄ recorder (peaks are kept) and the recorder's heartbeat/buffer/errors. */
+function RecorderRow({ m, rights, setRights, onSwitch }: { m: any; rights: boolean; setRights: (v: boolean) => void; onSwitch: (mode: "timestamp_only" | "recorder") => void }) {
+  const rs = m.recorder_state as null | { at: string; buffer_s: number; ready: boolean; error: string | null; version?: string };
+  if (m.media_mode === "timestamp_only") return (
+    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+      <label className="flex items-center gap-1"><input type="checkbox" checked={rights} onChange={(e) => setRights(e.target.checked)} />это мой эфир или есть разрешение на запись</label>
+      <button disabled={!rights} onClick={() => onSwitch("recorder")} className="rounded border border-border px-2 disabled:opacity-50">Включить рекордер (найденные всплески сохранятся)</button>
+    </div>);
+  if (m.media_mode !== "recorder") return null;
+  const age = rs ? ago(rs.at) : null; const online = age != null && age < 45;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px]">
+      <span className={online ? "text-primary" : "text-warning"}>Рекордер: {rs ? (online ? `на связи (${age} с назад)` : `нет связи ${Math.round(age! / 60)} мин`) : "ещё не подключался — запустите inverk-recorder.bat"}</span>
+      {rs && online && <span>буфер {Math.floor(rs.buffer_s / 60)}:{String(Math.floor(rs.buffer_s % 60)).padStart(2, "0")} · {rs.ready ? "готов резать (есть 20 с до всплеска)" : "набирает буфер"}</span>}
+      {rs?.error && <span className="text-warning">{rs.error}</span>}
+      <span className="text-muted-foreground">новые всплески режутся рекордером; найденные до включения остаются таймкодами</span>
+      <button onClick={() => onSwitch("timestamp_only")} className="rounded border border-border px-2 font-sans">Только таймкоды</button>
+    </div>);
 }
