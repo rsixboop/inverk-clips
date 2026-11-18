@@ -1,7 +1,7 @@
 // Gameplay-event highlights: pure rules for vision-detected story beats / novel interactions, independent of chat.
 // Server: src/server/live-worker.server.ts action "event_scan"; recorder: event_loop in public/recorder/recorder.py.
 export type EventKind = "story_beat" | "novel_interaction" | "routine" | "none" | "unavailable";
-export type GameEvent = { kind: EventKind; label: string; confidence: number; setup?: string; payoff?: string };
+export type GameEvent = { kind: EventKind; label: string; confidence: number; setup?: string | undefined; payoff?: string | undefined };
 export type EventState = { scan_at?: string; events?: { label: string; at: string }[] };
 
 export const EVENT_MIN_CONFIDENCE = 0.75;
