@@ -27,6 +27,11 @@ def write_pcm(path,pcm):
         w.setframerate(SR);w.setnchannels(1);w.setsampwidth(2);w.writeframes(pcm)
 def render(config):
     ep=json.loads(Path(config).read_text())
+    if ep.get("mode") == "overlay":
+        # SAME production entrypoint; an overlay video never invokes the old
+        # image-to-video/fullscreen-scene branch.
+        from render_overlay_news import make_episode as render_overlay_episode
+        return render_overlay_episode(config)
     if not ep.get("source_url","").startswith("https://www.rockstargames.com/"):
         raise RuntimeError("Episode must be grounded in an official Rockstar URL")
     if not ep.get("source_claims"):raise RuntimeError("No source-checked claims")
