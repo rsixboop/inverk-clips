@@ -6,7 +6,7 @@ import { AppShell } from "@/components/studio/AppShell";
 import { CATALOG, CLIPS, findAsset, findClip, isCatalogUrl, mediaUrl, pickAssets } from "@/lib/news-catalog";
 import { findGtaNews, findNewswire, scriptFromArticle } from "@/lib/news-script.functions";
 import { planTimeline } from "@/lib/news-timeline";
-import { drawOverlayCues, loadOverlayImages, validateOverlayCues } from "@/lib/news-overlays";
+import { BUILTIN_CASE_LOCK_KEY, drawOverlayCues, loadOverlayImages, validateOverlayCues, withBuiltinCaseLock } from "@/lib/news-overlays";
 import { Button } from "@/components/ui/button";
 import { alignNewsSpeech, resolveNewsOverlay } from "@/lib/news-overlay.functions";
 import { timeOverlayIntent, type SpeechWord } from "@/lib/news-overlay-plan";
@@ -125,7 +125,10 @@ function News() {
           for(let attempt=0;response.status==="pending" && attempt<150;attempt++) {setOverlayMessage(response.message);await new Promise(r=>setTimeout(r,2000));response=await overlayFn({data:{batch,narration:s.text,intent}});}
           if(response.status==="done"){
             const [before,active,result]=response.paths;
-            if(before&&active&&result && !cues.some(c=>c.speech===timed.speech))cues.push({...timed,before,active,result,...(response.key==="builtin:download-vault"?{fill_region:[.108,.455,.85,.67] as [number,number,number,number]}:{})});
+            const cue=before&&active&&result?{...timed,before,active,result}:null;
+            const finalCue=cue&&response.key===BUILTIN_CASE_LOCK_KEY?withBuiltinCaseLock(cue,length):cue;
+            if(!finalCue)messages.push(`Шот ${i+1}: мало времени для анимации замка`);
+            else if(!cues.some(c=>c.speech===timed.speech))cues.push(finalCue);
           }else messages.push(response.message);
         }
         updated.push({...s,overlay_cues:cues,speech_words:localWords});
@@ -309,8 +312,8 @@ function News() {
       <div className="panel p-3 space-y-2">
         <div className="border-b border-border pb-2 space-y-1">
           <b className="text-xs">212 GB · загрузка ≠ ранний доступ</b>
-          <video aria-label="Semantic download lock example" controls playsInline preload="metadata" src="/gta6_212gb_semantic.mp4" className="w-full rounded bg-muted" />
-          <a href="/gta6_212gb_semantic.mp4" download className="block text-xs text-primary underline">Скачать MP4 · смысловой объект</a>
+          <video aria-label="Game case padlock example" controls playsInline preload="metadata" src="/gta6_212gb_case_lock.mp4" className="w-full rounded bg-muted" />
+          <a href="/gta6_212gb_case_lock.mp4" download className="block text-xs text-primary underline">Скачать MP4 · кейс и замок</a>
         </div>
         <div className="rounded-md border border-primary/40 p-2 space-y-1">
           <b className="text-xs">Новый выпуск · Леонида за пределами Vice City · 4 прозрачных AI-ассета</b>

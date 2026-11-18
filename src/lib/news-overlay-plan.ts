@@ -46,4 +46,4 @@ export const OVERLAY_ASSET_RESERVATION_USD=0.30;
 export const OVERLAY_ALIGN_RESERVATION_USD=0.05;
 export const OVERLAY_BATCH_CAP_USD=1;
 export function canReserveOverlay(reserved:number,cost:number) { return cost>=0 && reserved+cost<=OVERLAY_BATCH_CAP_USD; }
-export const builtinOverlayAssets = [{key:"builtin:download-vault",object:"a mechanical game download vault",before:"empty reservoir with raised shackle",action:"full reservoir with raised shackle",after:"full reservoir with closed shackle"}];
+export const builtinOverlayAssets = [{key:"builtin:case-lock",object:"an upright dark game case with key art and a separate chunky padlock",before:"dim game case, no lock",action:"glow fills up around the case while preloading",after:"padlock drops in and its shackle closes with both legs seated"}];

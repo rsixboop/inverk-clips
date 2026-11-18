@@ -21,3 +21,24 @@ describe("optional narration cues",()=>{
     expect(()=>validateOverlayCues([{...cue,active:path.replace("?token=test","")}],6,origin)).toThrow();
   });
 });
+import { BUILTIN_CASE_LOCK_PATHS, layerPose, withBuiltinCaseLock, validateOverlayCues as validateMotion } from "./news-overlays";
+describe("case + padlock motion layers", () => {
+  const [before,active,result]=BUILTIN_CASE_LOCK_PATHS as [string,string,string];
+  const base={purpose:"locked until release",speech:"doesn't mean playing early",start:1,action:1.5,after:3,end:3.5,before,active,result,box:[0,0.8,1,0.2] as [number,number,number,number]};
+  it("extends the cue so the lock settles and validates", () => {
+    const cue=withBuiltinCaseLock(base,10)!;
+    expect(cue.end).toBeCloseTo(4.6); expect(cue.fill_dir).toBe("up"); expect(cue.box[1]).toBeLessThan(0.2);
+    expect(validateMotion([cue],10,"https://x.supabase.co")).toHaveLength(1);
+  });
+  it("skips when narration ends before the lock can settle", () => { expect(withBuiltinCaseLock(base,4)).toBeNull(); });
+  it("shackle starts raised, overshoots into the body, then rests seated", () => {
+    const shackle=withBuiltinCaseLock(base,10)!.layers![0]!;
+    expect(layerPose(shackle,0.8)[1]).toBeCloseTo(-0.085);
+    expect(layerPose(shackle,0.95)[1]).toBeGreaterThan(-0.085);
+    expect(layerPose(shackle,2)).toEqual([0,0,1,1]);
+  });
+  it("rejects motion that outlasts the cue", () => {
+    const cue={...withBuiltinCaseLock(base,10)!,end:3.5};
+    expect(()=>validateMotion([cue],10,"https://x.supabase.co")).toThrow();
+  });
+});

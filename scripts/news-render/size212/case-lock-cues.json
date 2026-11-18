@@ -1,0 +1,117 @@
+{
+  "output": "public/gta6_212gb_case_lock.mp4",
+  "erase": [
+    {
+      "rect": [
+        34,
+        1162,
+        656,
+        28
+      ],
+      "start": 8.95,
+      "end": 14.3,
+      "why": "baked old progress bar under PRELOAD IS LIVE"
+    }
+  ],
+  "cues": [
+    {
+      "purpose": "Preloaded game fills up, but stays locked until release: download is not early access",
+      "speech": "But downloading early doesn't mean playing early.",
+      "start": 9.3,
+      "action": 9.6,
+      "after": 15.25,
+      "end": 17.2,
+      "before": "/overlay-library/clean-tech/case-lock/before.png",
+      "active": "/overlay-library/clean-tech/case-lock/active.png",
+      "result": "/overlay-library/clean-tech/case-lock/result.png",
+      "box": [
+        0.03,
+        0.08,
+        0.58,
+        0.367
+      ],
+      "fill_region": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "fill_dir": "up",
+      "layers": [
+        {
+          "src": "/overlay-library/clean-tech/case-lock/lock-shackle.png",
+          "keys": [
+            [
+              0,
+              0,
+              -0.3,
+              1,
+              0
+            ],
+            [
+              0.5,
+              0,
+              -0.085,
+              1,
+              1
+            ],
+            [
+              0.8,
+              0,
+              -0.085,
+              1,
+              1
+            ],
+            [
+              1.1,
+              0,
+              0,
+              1,
+              1
+            ]
+          ]
+        },
+        {
+          "src": "/overlay-library/clean-tech/case-lock/lock-body.png",
+          "keys": [
+            [
+              0,
+              0,
+              -0.215,
+              1,
+              0
+            ],
+            [
+              0.5,
+              0,
+              0,
+              1,
+              1
+            ],
+            [
+              1.1,
+              0,
+              0,
+              1,
+              1
+            ],
+            [
+              1.22,
+              0,
+              0.016,
+              1,
+              1
+            ],
+            [
+              1.42,
+              0,
+              0,
+              1,
+              1
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}

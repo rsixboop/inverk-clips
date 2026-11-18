@@ -1,3 +1,4 @@
+import { BUILTIN_CASE_LOCK_KEY, BUILTIN_CASE_LOCK_PATHS } from "./news-overlays";
 import { decode } from "fast-png";
 import { falConfigured, falPoll, falSubmit, providerMedia } from "./providers/fal";
 import { fetchOutput } from "./output-fetch";
@@ -13,7 +14,7 @@ export async function overlayHash(value: unknown) {
 export async function resolveOverlayAsset(db:DB,user:string,batch:string,narration:string,raw:unknown) {
   const intent=validateOverlayIntents([raw],narration).intents[0];
   if(!intent) return {status:"skipped" as const,message:"Объект не соответствует озвучке"};
-  if(intent.cached_asset_key==="builtin:download-vault")return {status:"done" as const,key:"builtin:download-vault",paths:["before","active","result"].map(s=>`/overlay-library/clean-tech/300b6a9bc7ed8b4/${s}.png`),message:"Готовая иллюстрация из библиотеки"};
+  if(intent.cached_asset_key===BUILTIN_CASE_LOCK_KEY)return {status:"done" as const,key:BUILTIN_CASE_LOCK_KEY,paths:BUILTIN_CASE_LOCK_PATHS,message:"Готовая иллюстрация из библиотеки"};
   if(intent.cached_asset_key && /^[a-f0-9]{64}$/.test(intent.cached_asset_key)) {
     const cached=await db.from("news_overlay_assets").select("state").eq("user_id",user).eq("asset_key",intent.cached_asset_key).maybeSingle();
     const state=cached.data?.state as unknown as AssetState|undefined;
