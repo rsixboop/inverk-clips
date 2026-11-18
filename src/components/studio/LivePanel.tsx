@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { TabCapture } from "@/components/studio/TabCapture";
 import { buildWindowsLauncher } from "@/lib/recorder-launcher";
-import { addMonitor, setMediaMode, createWorkerToken, highlightUrl, liveStatus, monitorAction, tickLive } from "@/lib/live.functions";
+import { addMonitor, setMediaMode, revokeWorkerTokens, createWorkerToken, highlightUrl, liveStatus, monitorAction, tickLive } from "@/lib/live.functions";
 
 const ST: Record<string, string> = { resolving: "поиск эфира", live: "в эфире", offline: "не в эфире", blocked: "заблокировано", stopped: "остановлено" };
 const HS: Record<string, string> = { timestamp_only: "только таймкод", awaiting_media: "ждёт запись", claimed: "рекордер режет", done: "MP4 готов", failed: "ошибка", unavailable: "медиа недоступно" };
@@ -16,7 +16,7 @@ const t = (s: string) => new Date(s).toLocaleTimeString("ru");
 
 export function LivePanel() {
   const qc = useQueryClient();
-  const switchMode = useServerFn(setMediaMode); const [swRights, setSwRights] = useState<Record<string, boolean>>({});
+  const switchMode = useServerFn(setMediaMode); const revoke = useServerFn(revokeWorkerTokens); const [swRights, setSwRights] = useState<Record<string, boolean>>({});
   const add = useServerFn(addMonitor), act = useServerFn(monitorAction), tick = useServerFn(tickLive), mkToken = useServerFn(createWorkerToken), dl = useServerFn(highlightUrl), status = useServerFn(liveStatus);
   const [input, setInput] = useState(""); const [mode, setMode] = useState<string>("timestamp_only"); const [rec, setRec] = useState(""); const [rights, setRights] = useState(false); const [token, setToken] = useState("");
   const creds = useQuery({ queryKey: ["live-creds"], queryFn: () => status() }).data;
@@ -74,7 +74,10 @@ export function LivePanel() {
         <button onClick={() => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([buildWindowsLauncher(window.location.origin)], { type: "application/octet-stream" })); a.download = "inverk-recorder.bat"; a.click(); }} className="rounded border border-border px-2 py-1">Скачать запуск рекордера для Windows (.bat)</button>
         <p>3. Создайте токен и вставьте его в окно рекордера, когда он попросит (ввод скрыт, токен хранится только у вас в профиле Windows). Новый токен: запустите с параметром --reset-token. macOS/Linux: <a className="underline" href="/recorder/recorder.py" download>recorder.py</a>, нужны Python 3, ffmpeg и streamlink.</p>
         <button onClick={async () => { try { setToken((await mkToken()).token); } catch (e) { toast.error((e as Error).message); } }} className="rounded border border-border px-2 py-1">Создать токен рекордера</button>
-        {token && <p className="break-all font-mono text-foreground">{token} <span className="text-warning">(показан один раз — скопируйте в окно рекордера)</span></p>}
+        {token && <p className="flex flex-wrap items-center gap-2 font-mono text-foreground"><span className="break-all">{token}</span>
+          <button onClick={async () => { try { await navigator.clipboard.writeText(token); setToken(""); toast.success("Токен скопирован и скрыт — вставьте его в окно рекордера"); } catch { toast.error("Не удалось скопировать — выделите вручную"); } }} className="rounded border border-border px-2 font-sans">Скопировать и скрыть</button>
+          <span className="font-sans text-warning">показан один раз</span></p>}
+        <button onClick={async () => { if (!confirm("Отозвать все токены рекордера? Запущенный рекордер попросит новый.")) return; try { const r = await revoke(); setToken(""); toast.success(`Отозвано токенов: ${r.revoked}. Создайте новый и запустите рекордер с --reset-token`); } catch (e) { toast.error((e as Error).message); } }} className="ml-2 rounded border border-border px-2 py-1">Отозвать все токены</button>
       </div>
     </div>
   );

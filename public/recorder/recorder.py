@@ -10,7 +10,7 @@ Windows: start inverk-recorder.bat (downloaded from Sources). Others: INVERK_URL
 """
 import base64, calendar, csv, getpass, glob, json, os, shutil, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 
-VERSION = "2.0"
+VERSION = "2.1"
 SEG, PRE, POST = 10, 20, 15
 KEEP_S = int(os.environ.get("INVERK_KEEP_SECONDS", "900"))
 IS_WIN = os.name == "nt"
@@ -22,6 +22,7 @@ APP = TOKEN = ""
 FFMPEG = STREAMLINK = None
 procs = {}   # monitor id -> Session
 errors = {}  # monitor id -> last capture error
+retry_at, fails = {}, {}  # reconnect backoff per monitor
 done = set() # highlight ids already uploaded in this run (server also dedups by claim + idempotency key)
 
 # ---------- configuration & tools ----------
@@ -116,42 +117,116 @@ def plan_cut(segs, start_wall, end_wall, pre=PRE, post=POST):
     return [s[0] for s in use], max(0.0, a - use[0][1]), b - a
 
 # ---------- capture sessions ----------
+# ---------- Streamlink -> ffmpeg handoff (pure parts unit-tested) ----------
+import re
+SIGS = [(b"\x1aE\xdf\xa3", "matroska"), (b"FLV", "flv")]
+
+def sanitize(text):
+    """Logs may contain signed stream URLs: keep host/path, drop query strings and tokens."""
+    text = re.sub(r"(https?://[^\s?\"']+)\?[^\s\"']*", r"\1?…", text)
+    return re.sub(r"lrw_[0-9a-f]{8,}", "lrw_…", text)
+
+def find_ts_sync(b):
+    for i in range(0, min(len(b) - 376, 65536)):
+        if b[i] == 0x47 and b[i + 188] == 0x47 and b[i + 376] == 0x47: return i
+    return -1
+
+def sniff(head):
+    """-> (ffmpeg input format, bytes to skip, note). Leading non-media bytes (e.g. console text) are dropped."""
+    i = find_ts_sync(head)
+    if i == 0: return "mpegts", 0, "MPEG-TS"
+    for sig, fmt in SIGS:
+        if head.startswith(sig): return fmt, 0, fmt
+    if len(head) > 8 and head[4:8] == b"ftyp": return "mp4", 0, "mp4"
+    if i > 0: return "mpegts", i, f"MPEG-TS после {i} байт мусора: {sanitize(head[:min(i, 160)].decode('latin-1'))!r}"
+    return None, 0, "неизвестный формат, первые байты: " + head[:24].hex()
+
+class Relay(threading.Thread):
+    """Reads Streamlink's stdout, identifies the container from the first bytes, starts ffmpeg with an explicit
+    input format and copies bytes. Avoids ffmpeg guessing on a pipe ("Invalid data found when processing input")."""
+    def __init__(self, src, start_ff, on_fail):
+        super().__init__(daemon=True); self.src, self.start_ff, self.on_fail = src, start_ff, on_fail; self.ff = None; self.bytes = 0; self.note = ""
+    def run(self):
+        head = b""
+        while len(head) < 65536 + 376:
+            chunk = self.src.read(65536)
+            if not chunk: break
+            head += chunk
+            fmt, skip, note = sniff(head)
+            if fmt and (fmt != "mpegts" or skip or len(head) >= 4096): break
+        fmt, skip, self.note = sniff(head)
+        if not fmt: return self.on_fail(f"Streamlink отдал не видео ({self.note}; {len(head)} байт)")
+        self.ff = self.start_ff(fmt)
+        try:
+            self.ff.stdin.write(head[skip:]); self.bytes = len(head) - skip
+            while True:
+                chunk = self.src.read(65536)
+                if not chunk: break
+                self.ff.stdin.write(chunk); self.bytes += len(chunk)
+        except (BrokenPipeError, OSError): pass
+        finally:
+            try: self.ff.stdin.close()
+            except OSError: pass
+
+def ffmpeg_segment_cmd(fmt):
+    return [FFMPEG, "-hide_banner", "-loglevel", "error", "-fflags", "+genpts+discardcorrupt", "-f", fmt, "-i", "pipe:0", "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy",
+            "-f", "segment", "-segment_time", str(SEG), "-reset_timestamps", "1",
+            "-segment_list", "list.csv", "-segment_list_type", "csv", "-segment_list_flags", "+live", "seg_%06d.ts"]
+
+def streamlink_cmd(url):
+    # --ffmpeg-fout mpegts: when Streamlink must mux separate audio/video it would otherwise emit matroska.
+    return [STREAMLINK, "--stdout", "--loglevel", "info", "--hls-live-edge", "3", "--stream-segment-attempts", "5",
+            "--ffmpeg-ffmpeg", FFMPEG, "--ffmpeg-fout", "mpegts", url, "best"]
+
 class Session:
     def __init__(self, m):
         self.url = m["record_url"]; self.dir = os.path.join(BUF, m["id"], str(int(time.time()))); os.makedirs(self.dir, exist_ok=True)
-        self.log = open(os.path.join(self.dir, "capture.log"), "wb")
-        self.src = subprocess.Popen([STREAMLINK, "--stdout", "--hls-live-edge", "2", "--stream-segment-attempts", "5", self.url, "best"],
-                                    stdout=subprocess.PIPE, stderr=self.log, creationflags=NOWIN)
-        self.ff = subprocess.Popen([FFMPEG, "-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy",
-                                    "-f", "segment", "-segment_time", str(SEG), "-reset_timestamps", "1",
-                                    "-segment_list", "list.csv", "-segment_list_type", "csv", "-segment_list_flags", "+live", "seg_%06d.ts"],
-                                   stdin=self.src.stdout, stderr=self.log, cwd=self.dir, creationflags=NOWIN)
-        self.src.stdout.close()  # ffmpeg owns the pipe; lets streamlink see EPIPE if ffmpeg exits
-        print("буфер:", self.url, flush=True)
-    def alive(self): return self.ff.poll() is None and self.src.poll() is None
-    def tail(self):
+        self.sl_log = open(os.path.join(self.dir, "streamlink.log"), "wb"); self.ff_log = open(os.path.join(self.dir, "ffmpeg.log"), "wb"); self.fail = None
+        self.src = subprocess.Popen(streamlink_cmd(self.url), stdout=subprocess.PIPE, stderr=self.sl_log, creationflags=NOWIN)
+        def start_ff(fmt):
+            return subprocess.Popen(ffmpeg_segment_cmd(fmt), stdin=subprocess.PIPE, stderr=self.ff_log, cwd=self.dir, creationflags=NOWIN)
+        def on_fail(msg): self.fail = msg
+        self.relay = Relay(self.src.stdout, start_ff, on_fail); self.relay.start()
+        print("буфер:", sanitize(self.url), flush=True)
+    @property
+    def ff(self): return self.relay.ff
+    def alive(self):
+        if self.fail or self.src.poll() is not None: return False
+        return self.ff is None or self.ff.poll() is None
+    def _tail(self, f):
         try:
-            self.log.flush()
-            with open(self.log.name, "rb") as f: return f.read()[-400:].decode("utf-8", "replace").strip().splitlines()[-1:] or [""]
-        except Exception: return [""]
+            f.flush()
+            with open(f.name, "rb") as h: lines = [l for l in h.read()[-2000:].decode("utf-8", "replace").splitlines() if l.strip()]
+            return sanitize(" | ".join(lines[-2:]))[:220]
+        except Exception: return ""
+    def diagnose(self):
+        parts = [self.fail] if self.fail else []
+        if self.src.poll() is not None: parts.append(f"streamlink код {self.src.returncode}: {self._tail(self.sl_log)}")
+        if self.ff is not None and self.ff.poll() is not None: parts.append(f"ffmpeg код {self.ff.returncode}: {self._tail(self.ff_log)}")
+        if self.relay.note and self.relay.note != "MPEG-TS": parts.append(f"формат: {self.relay.note}")
+        return "; ".join(p for p in parts if p) or "streamlink/ffmpeg завершились"
     def stop(self):
         for p in (self.src, self.ff):
-            if p.poll() is None:
+            if p is not None and p.poll() is None:
                 p.terminate()
                 try: p.wait(5)
                 except subprocess.TimeoutExpired: p.kill()
-        self.log.close()
+        self.relay.join(3); self.sl_log.close(); self.ff_log.close()
 
 def sync_monitors():
     r = api("monitors"); ms = r.get("monitors", [])
-    if r.get("error"): print("ошибка API:", r["error"], flush=True)
+    if r.get("error", "").startswith("401"):  # token revoked in Sources: forget it and ask for a new one on next start
+        save_cfg({**load_cfg(), "token": ""}); raise SystemExit("Токен отозван или неверен. Создайте новый в «Источники» и запустите рекордер снова.")
+    if r.get("error"): print("ошибка API:", sanitize(r["error"]), flush=True)
     live = {m["id"]: m for m in ms if m["media_mode"] == "recorder" and m["status"] == "live" and m.get("record_url")}
     for mid, s in list(procs.items()):
         if mid not in live or not s.alive() or live[mid]["record_url"] != s.url:
-            if not s.alive(): errors[mid] = f"Захват прервался: {s.tail()[0][:200] or 'streamlink/ffmpeg завершились'}"; print(errors[mid], flush=True)
+            if not s.alive():
+                errors[mid] = "Захват прервался: " + s.diagnose(); fails[mid] = fails.get(mid, 0) + 1
+                retry_at[mid] = time.time() + min(120, 10 * 2 ** (fails[mid] - 1)); errors[mid] += f" — повтор через {int(retry_at[mid] - time.time())} с"; print(errors[mid], flush=True)
             s.stop(); del procs[mid]
     for mid, m in live.items():
-        if mid not in procs:
+        if mid not in procs and time.time() >= retry_at.get(mid, 0):
             try: procs[mid] = Session(m)
             except Exception as e: errors[mid] = f"Не удалось запустить захват: {e}"
     now = time.time()
@@ -164,6 +239,7 @@ def sync_monitors():
         segs = all_segments(m["id"]); s = procs.get(m["id"])
         tail = [x for x in segs if s and x[0].startswith(s.dir)]
         buf = (tail[-1][2] - tail[0][1]) if tail else 0
+        if buf > SEG: fails[m["id"]] = 0
         err = None if (s and s.alive()) else errors.get(m["id"]) or ("Эфир не идёт — запись не ведётся" if m["status"] != "live" else "Нет ссылки на эфир")
         states.append({"id": m["id"], "buffer_s": round(buf, 1), "ready": bool(s and s.alive() and buf >= PRE + SEG), "error": err})
     api("status", monitors=states, version=VERSION, tools=f"streamlink+ffmpeg ({'Windows' if IS_WIN else sys.platform})")

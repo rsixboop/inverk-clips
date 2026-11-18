@@ -100,3 +100,10 @@ export const captureFinish = createServerFn({ method: "POST" }).middleware([requ
     if ("error" in r) throw new Error(`Сервер отклонил MP4: ${r.error}`);
     return { ok: true, job_id: r.job_id };
   });
+
+/** Revoke every recorder token of the caller (only hashes are stored; running recorders get 401 and ask for a new one). */
+export const revokeWorkerTokens = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
+  const { data, error } = await (await admin()).from("live_workers").delete().eq("user_id", context.userId).select("id");
+  if (error) throw new Error(error.message);
+  return { revoked: data?.length ?? 0 };
+});

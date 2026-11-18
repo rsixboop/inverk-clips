@@ -63,4 +63,35 @@ class Fixture(unittest.TestCase):
         R.done.add("h1"); R.process({"id": "h1", "claim": "c", "monitor_id": self.mid}, {"media_mode": "recorder"})
         self.assertEqual(calls, [("fail", {"id": "h1", "claim": "c", "error": "уже загружено этим рекордером", "retryable": False})])
 
+class Handoff(unittest.TestCase):
+    """Streamlink -> ffmpeg handoff: container sniffing, junk-prefix recovery, real Streamlink 8.6.3 args."""
+    def run_relay(self, payload_cmd, junk=b""):
+        R.FFMPEG = shutil.which("ffmpeg"); d = tempfile.mkdtemp()
+        data = junk + subprocess.run(payload_cmd, capture_output=True, check=True).stdout
+        import io
+        rel = R.Relay(io.BytesIO(data), lambda fmt: subprocess.Popen(R.ffmpeg_segment_cmd(fmt), stdin=subprocess.PIPE, stderr=subprocess.PIPE, cwd=d), lambda m: self.fail(m))
+        rel.run(); rel.ff.wait(30)
+        os.makedirs(os.path.join(d, "..", "x"), exist_ok=True)
+        rows = [l for l in open(os.path.join(d, "list.csv")) if l.strip()]
+        return rel, rows
+    SRC = ["-f", "lavfi", "-i", "testsrc=s=320x240:r=30:d=25", "-f", "lavfi", "-i", "sine=d=25", "-c:v", "libx264", "-g", "30", "-c:a", "aac"]
+    def test_ts(self):
+        rel, rows = self.run_relay(["ffmpeg", "-loglevel", "error", *self.SRC, "-f", "mpegts", "-"]); self.assertEqual(rel.note, "MPEG-TS"); self.assertGreaterEqual(len(rows), 2)
+    def test_console_text_before_ts_is_dropped(self):
+        rel, rows = self.run_relay(["ffmpeg", "-loglevel", "error", *self.SRC, "-f", "mpegts", "-"], junk=b"[cli][info] Opening stream: 1080p60 https://x.googlevideo.com/a?sig=SECRET\r\n")
+        self.assertIn("мусора", rel.note); self.assertNotIn("SECRET", rel.note); self.assertGreaterEqual(len(rows), 2)
+    def test_matroska_from_streamlink_muxer(self):
+        rel, rows = self.run_relay(["ffmpeg", "-loglevel", "error", *self.SRC, "-f", "matroska", "-"]); self.assertEqual(rel.note, "matroska"); self.assertGreaterEqual(len(rows), 2)
+    def test_garbage_is_reported_not_fed(self):
+        self.assertIsNone(R.sniff(b"<html>Sign in to confirm" + b" " * 5000)[0])
+    def test_sanitize(self):
+        self.assertEqual(R.sanitize("GET https://r1.googlevideo.com/x/y.m3u8?sig=abc&ip=1 lrw_0123456789abcdef"), "GET https://r1.googlevideo.com/x/y.m3u8?… lrw_…")
+    @unittest.skipUnless(os.path.isfile("/tmp/sl/bin/streamlink"), "Streamlink 8.6.3 venv not installed")
+    def test_real_streamlink_863_live_hls(self):
+        R.FFMPEG = shutil.which("ffmpeg"); R.STREAMLINK = "/tmp/sl/bin/streamlink"; R.BUF = tempfile.mkdtemp()
+        import time
+        s = R.Session({"id": "sl", "record_url": "hls://https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"}); time.sleep(25)
+        segs = R.all_segments("sl"); diag = s.diagnose(); s.stop()
+        self.assertGreaterEqual(len(segs), 1, diag); self.assertEqual(s.relay.note, "MPEG-TS")
+
 if __name__ == "__main__": unittest.main(verbosity=2)
