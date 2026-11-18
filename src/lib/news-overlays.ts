@@ -3,13 +3,22 @@ export type OverlayCue = {
   before: string; active: string; result: string; box: [number, number, number, number];
   fill_region?: [number,number,number,number];
 };
-export function validateOverlayCues(input: unknown, duration: number): OverlayCue[] {
+export function isOverlayImageUrl(path: unknown, storageOrigin = import.meta.env['VITE_SUPABASE_URL']): path is string {
+  if (typeof path !== "string") return false;
+  if (/^\/overlay-library\/[\w/.-]+\.png$/.test(path) && !path.includes("..")) return true;
+  try {
+    const url = new URL(path), origin = new URL(storageOrigin);
+    return url.protocol === "https:" && url.origin === origin.origin && !url.username && !url.password &&
+      /^\/storage\/v1\/object\/sign\/outputs\/[\w/-]+\.png$/.test(url.pathname) && Boolean(url.searchParams.get("token"));
+  } catch { return false; }
+}
+export function validateOverlayCues(input: unknown, duration: number, storageOrigin = import.meta.env['VITE_SUPABASE_URL']): OverlayCue[] {
   if (input == null) return [];
   if (!Array.isArray(input)) throw new Error("Оверлеи должны быть списком");
   return input.map((c) => {
     if (!c || typeof c.purpose !== "string" || !c.purpose.trim() || typeof c.speech !== "string" || !c.speech.trim()) throw new Error("Нужны цель и фраза озвучки");
     if (![c.start,c.action,c.after,c.end].every(Number.isFinite) || !(0 <= c.start && c.start < c.action && c.action < c.after && c.after < c.end && c.end <= duration)) throw new Error("Время: начало < действие < результат < конец в пределах озвучки");
-    if (![c.before,c.active,c.result].every((p) => typeof p === "string" && /^\/overlay-library\/[\w/.-]+\.png$/.test(p) && !p.includes(".."))) throw new Error("Нужны три PNG из библиотеки");
+    if (![c.before,c.active,c.result].every((p) => isOverlayImageUrl(p, storageOrigin))) throw new Error("Нужны три PNG из библиотеки или защищённого хранилища");
     const b = c.box;
     if (!Array.isArray(b) || b.length !== 4 || !b.every((n) => Number.isFinite(n) && n >= 0 && n <= 1) || b[2] <= 0 || b[3] <= 0 || b[0]+b[2]>1 || b[1]+b[3]>1) throw new Error("Объект должен помещаться в кадр");
     if(c.fill_region && (!Array.isArray(c.fill_region) || c.fill_region.length!==4 || !c.fill_region.every((v:number)=>Number.isFinite(v)&&v>=0&&v<=1) || c.fill_region[0]>=c.fill_region[2] || c.fill_region[1]>=c.fill_region[3])) throw new Error("Некорректная область заполнения");

@@ -204,10 +204,7 @@ function News() {
       for(const cue of s.overlay_cues ?? []){
         try{
           if(!s.text.includes(cue.speech))continue;
-          if(!cue.before.startsWith("/overlay-library/") && !cue.before.includes("/object/sign/outputs/"))continue;
-          if(!cue.before.startsWith("/overlay-library/")){
-            if(!(0<=cue.start && cue.start<cue.action && cue.action<cue.after && cue.after<cue.end && cue.end<=(plan.seconds[i] ?? s.seconds)))continue;
-          }else validateOverlayCues([cue],plan.seconds[i] ?? s.seconds);
+          validateOverlayCues([cue],plan.seconds[i] ?? s.seconds);
           const images=await loadOverlayImages([cue]);images.forEach((image,path)=>overlayImages.current.set(path,image));usable.push(cue);
         }catch{setOverlayMessage("Непригодные состояния пропущены; исходный видеоряд сохранён");}
       }

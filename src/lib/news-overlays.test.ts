@@ -13,4 +13,11 @@ describe("optional narration cues",()=>{
     expect(()=>validateOverlayCues([{...cue,after:1}],6)).toThrow();
     expect(()=>validateOverlayCues([{...cue,before:"https://example.com/a.png"}],6)).toThrow();
   });
+  it("accepts three signed PNG states only on the configured storage origin",()=>{
+    const origin="https://storage.example.test";
+    const path=`${origin}/storage/v1/object/sign/outputs/user/news-overlays/key/0.png?token=test`;
+    expect(validateOverlayCues([{...cue,before:path,active:path,result:path}],6,origin)).toHaveLength(1);
+    expect(()=>validateOverlayCues([{...cue,before:path.replace(origin,"https://evil.test")}],6,origin)).toThrow();
+    expect(()=>validateOverlayCues([{...cue,active:path.replace("?token=test","")}],6,origin)).toThrow();
+  });
 });
