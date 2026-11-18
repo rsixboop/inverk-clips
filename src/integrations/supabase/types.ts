@@ -419,6 +419,114 @@ export type Database = {
         }
         Relationships: []
       }
+      local_candidates: {
+        Row: {
+          caption_note: string | null
+          captions: Json | null
+          channel: string
+          created_at: string
+          detail: string | null
+          id: string
+          job_id: string | null
+          output_path: string | null
+          reason: string | null
+          review: string | null
+          score: number | null
+          segments: Json
+          status: string
+          updated_at: string
+          user_id: string
+          whisper_request: string | null
+          window_info: Json
+        }
+        Insert: {
+          caption_note?: string | null
+          captions?: Json | null
+          channel: string
+          created_at?: string
+          detail?: string | null
+          id?: string
+          job_id?: string | null
+          output_path?: string | null
+          reason?: string | null
+          review?: string | null
+          score?: number | null
+          segments: Json
+          status: string
+          updated_at?: string
+          user_id: string
+          whisper_request?: string | null
+          window_info?: Json
+        }
+        Update: {
+          caption_note?: string | null
+          captions?: Json | null
+          channel?: string
+          created_at?: string
+          detail?: string | null
+          id?: string
+          job_id?: string | null
+          output_path?: string | null
+          reason?: string | null
+          review?: string | null
+          score?: number | null
+          segments?: Json
+          status?: string
+          updated_at?: string
+          user_id?: string
+          whisper_request?: string | null
+          window_info?: Json
+        }
+        Relationships: []
+      }
+      local_footage: {
+        Row: {
+          aligned: boolean
+          channel: string
+          detail: string | null
+          duration_s: number | null
+          file_name: string
+          id: string
+          rel_path: string
+          session: string
+          size_bytes: number | null
+          start_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          aligned?: boolean
+          channel: string
+          detail?: string | null
+          duration_s?: number | null
+          file_name: string
+          id?: string
+          rel_path: string
+          session: string
+          size_bytes?: number | null
+          start_at?: string | null
+          status: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          aligned?: boolean
+          channel?: string
+          detail?: string | null
+          duration_s?: number | null
+          file_name?: string
+          id?: string
+          rel_path?: string
+          session?: string
+          size_bytes?: number | null
+          start_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       news_overlay_assets: {
         Row: {
           asset_key: string

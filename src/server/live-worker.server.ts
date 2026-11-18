@@ -27,6 +27,10 @@ export async function handleWorker(request: Request): Promise<Response> {
     return Response.json({ monitors: (data ?? []).map((m) => ({ ...m, record_url: m.media_mode === "recording_url" ? m.recording_url
       : m.platform === "twitch" ? `https://www.twitch.tv/${m.channel_id}` : m.live_video_id ? `https://www.youtube.com/watch?v=${m.live_video_id}` : null })) });
   }
+  if (String(body.action ?? "").startsWith("folder_") || String(body.action ?? "").startsWith("candidate_")) {
+    const { handleFolder } = await import("@/server/local-folder.server");
+    return (await handleFolder(db, uid, body)) ?? Response.json({ error: "bad request" }, { status: 400 });
+  }
   if (body.action === "status") { // recorder heartbeat: per-monitor buffer/ready/error, shown in Sources
     const list = Array.isArray((body as any).monitors) ? (body as any).monitors.slice(0, 20) : [];
     const at = new Date().toISOString();

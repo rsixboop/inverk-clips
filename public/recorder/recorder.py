@@ -10,7 +10,7 @@ Windows: start inverk-recorder.bat (downloaded from Sources). Others: INVERK_URL
 """
 import base64, calendar, csv, getpass, glob, json, os, shutil, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 
-VERSION = "2.1"
+VERSION = "2.2"
 SEG, PRE, POST = 10, 20, 15
 KEEP_S = int(os.environ.get("INVERK_KEEP_SECONDS", "900"))
 IS_WIN = os.name == "nt"
@@ -281,6 +281,236 @@ def process(h, mon):
         if r.get("ok"): done.add(h["id"])
         print("клип", h["id"][:8], f"{len(data) / 1048576:.1f} МБ", "готов" if r.get("ok") else r, flush=True)
 
+
+# ---------- folder import: existing recordings in %USERPROFILE%\Videos\StreamClips\<channel>\<yyyyMMdd-HHmmss>\clip_NNNN.mp4 ----------
+# Read-only: files are only listed, probed and read by ffmpeg; nothing is ever written, renamed or locked there.
+import re as _re
+FOLDER = None
+FIDX = os.path.join(CFG_DIR, "folder_index.json")
+SESSION_RE, CLIP_RE = _re.compile(r"^\d{8}-\d{6}$"), _re.compile(r"^clip_(\d{4,})\.mp4$", _re.I)
+STABLE_S, QUIET_S, LAST_CLIP_S, ALIGN_TOL = 20, 30, 180, 10
+
+def load_fidx():
+    try:
+        with open(FIDX, encoding="utf-8") as f: return json.load(f)
+    except Exception: return {}
+
+def save_fidx(idx):
+    os.makedirs(CFG_DIR, exist_ok=True); tmp = FIDX + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f: json.dump(idx, f)
+    os.replace(tmp, FIDX)
+
+def session_start(name): return time.mktime(time.strptime(name, "%Y%m%d-%H%M%S"))  # folder names are local time
+
+def probe(path):
+    """Duration if the MP4 is finalized (index readable) and has video+audio, else None. Uses ffmpeg itself because
+    Streamlink's bundled ffmpeg folder has no ffprobe."""
+    r = subprocess.run([FFMPEG, "-hide_banner", "-i", path], capture_output=True, timeout=60, creationflags=NOWIN)
+    err = r.stderr.decode("utf-8", "replace")
+    m = _re.search(r"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)", err)
+    if not m or "moov atom not found" in err or "Video:" not in err or "Audio:" not in err: return None
+    d = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)); return d if d > 0.5 else None
+
+def scan_folder(root, idx, now=None, prober=None):
+    """Update idx (rel_path -> record) for every clip file; returns records grouped by (channel, session)."""
+    now = now or time.time(); prober = prober or probe; sessions = {}
+    for ch in sorted(os.listdir(root)):
+        cdir = os.path.join(root, ch)
+        if not os.path.isdir(cdir): continue
+        for sess in sorted(os.listdir(cdir)):
+            sdir = os.path.join(cdir, sess)
+            if not (os.path.isdir(sdir) and SESSION_RE.match(sess)): continue
+            clips = sorted(((int(m.group(1)), f) for f in os.listdir(sdir) if (m := CLIP_RE.match(f))), key=lambda x: x[0])
+            recs = []
+            for i, (num, f) in enumerate(clips):
+                path = os.path.join(sdir, f); rel = f"{ch}/{sess}/{f}"
+                try: st = os.stat(path)
+                except OSError: continue
+                r = idx.get(rel) or {"rel_path": rel, "channel": ch, "session": sess, "file_name": f, "num": num}
+                changed = r.get("size_bytes") != st.st_size or r.get("mtime") != st.st_mtime
+                if changed: r.update(size_bytes=st.st_size, mtime=st.st_mtime, seen_at=now, status="writing", duration_s=None, features=None)
+                later = i < len(clips) - 1
+                if r["status"] in ("writing", "checking"):
+                    if changed or now - st.st_mtime < QUIET_S or now - r["seen_at"] < STABLE_S: r["status"], r["detail"] = "writing", "файл ещё пишется"
+                    elif not later and now - st.st_mtime < LAST_CLIP_S: r["status"], r["detail"] = "checking", "последний файл сессии — ждём завершения"
+                    else:
+                        d = prober(path)
+                        r["status"], r["duration_s"], r["detail"] = ("ready", d, None) if d else ("invalid", None, "MP4 не завершён или без звука/видео")
+                r["abs"] = path; idx[rel] = r; recs.append(r)
+            if recs: sessions[(ch, sess)] = recs
+    for key, recs in sessions.items(): timeline(key[1], recs)
+    return sessions
+
+def timeline(sess, recs):
+    """Session-relative offsets from cumulative durations; wall clock counts as verified only when every file's
+    mtime (= when the writer closed it) matches folder start + cumulative duration within ALIGN_TOL."""
+    t0 = session_start(sess); off = 0.0; ok = True; prev = None
+    for r in recs:
+        contiguous = prev is not None and r["num"] == prev["num"] + 1 and prev["status"] == "ready"
+        if prev is not None and not contiguous: ok = False
+        if r["status"] != "ready": r.update(offset=None, aligned=False, start_at=None); prev = r; ok = False; continue
+        r["offset"] = off; end_wall = t0 + off + r["duration_s"]
+        ok = ok and abs(r["mtime"] - end_wall) <= ALIGN_TOL
+        r["aligned"] = ok; r["start_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t0 + off)) if ok else None
+        off += r["duration_s"]; prev = r
+
+def segments_for(recs, a, b):
+    """Map a session-time window onto (file, from, to) pieces, stitching adjacent files; None if not contiguous."""
+    out = []
+    for r in recs:
+        if r["status"] != "ready" or r.get("offset") is None: continue
+        s, e = r["offset"], r["offset"] + r["duration_s"]
+        if e <= a or s >= b: continue
+        if out and abs(out[-1][3] - s) > 0.05: return None
+        out.append((r, max(a, s) - s, min(b, e) - s, e))
+    if not out or out[0][0]["offset"] + out[0][1] > a + 0.05 or out[-1][0]["offset"] + out[-1][2] < b - 0.05: return None
+    return [(r, f, t) for r, f, t, _ in out]
+
+def audio_rms(path):
+    """Per-second RMS level (dB) of the original audio."""
+    r = subprocess.run([FFMPEG, "-hide_banner", "-nostats", "-i", path, "-vn", "-ac", "1",
+                        "-af", "aresample=16000,asetnsamples=n=16000,astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file=-", "-f", "null", "-"],
+                       capture_output=True, timeout=900, creationflags=NOWIN)
+    vals = []
+    for line in r.stdout.decode("utf-8", "replace").splitlines():
+        if "RMS_level=" in line:
+            v = line.split("=", 1)[1].strip(); vals.append(-90.0 if v in ("-inf", "inf", "nan") else max(-90.0, float(v)))
+    return vals
+
+def scene_changes(path, start, dur):
+    r = subprocess.run([FFMPEG, "-hide_banner", "-nostats", "-ss", f"{start:.2f}", "-t", f"{dur:.2f}", "-i", path, "-an", "-vf", "fps=4,scale=160:-2,select='gt(scene,0.3)',metadata=print:file=-", "-f", "null", "-"],
+                       capture_output=True, timeout=300, creationflags=NOWIN)
+    return r.stdout.decode("utf-8", "replace").count("lavfi.scene_score=")
+
+def norm(s): return _re.sub(r"[^0-9a-zа-яё]", "", (s or "").lower())
+
+def rank_candidates(sessions, monitors, highlights, used, max_files=30):
+    """Best moments first. Verified wall clock + matching monitor -> chat spikes; otherwise audio surge + scene cuts."""
+    cands = []; used_keys = {(u.get("channel"), u.get("session"), int(u.get("a", -1))) for u in used if isinstance(u, dict)}
+    for (ch, sess), recs in sessions.items():
+        ready = [r for r in recs if r["status"] == "ready"][-max_files:]
+        if not ready: continue
+        mon_ids = {m["id"] for m in monitors if norm(ch) and any(norm(ch) in norm(m.get(k)) or (norm(m.get(k)) and norm(m.get(k)) in norm(ch)) for k in ("channel_title", "input", "channel_id"))}
+        if all(r.get("aligned") for r in ready) and mon_ids:
+            t0 = session_start(sess)
+            for h in highlights:
+                if h["monitor_id"] not in mon_ids: continue
+                a, b = iso_ts(h["start_at"]) - t0 - PRE, iso_ts(h["end_at"]) - t0 + POST
+                segs = segments_for(recs, a, b)
+                if segs: cands.append({"channel": ch, "session": sess, "a": a, "b": b, "score": 100 + float(h.get("score") or 0), "segs": segs,
+                                       "reason": f"всплеск чата {h['peak_at'][11:19]} UTC; время файлов сверено"})
+        series = []  # (session_time, dB)
+        for r in ready:
+            if r.get("features") is None: r["features"] = {"rms": audio_rms(r["abs"])}
+            series += [(r["offset"] + i, v) for i, v in enumerate(r["features"]["rms"])]
+        peaks = []
+        for i in range(len(series)):
+            win = [v for _, v in series[i:i + 3]]; base = sorted(v for _, v in series[max(0, i - 60):i] or series[:60])
+            if len(win) < 3 or not base: continue
+            peaks.append((sum(win) / 3 - base[len(base) // 2], series[i][0]))
+        peaks.sort(reverse=True); picked = []
+        for z, t in peaks:
+            if len(picked) >= 5: break
+            if any(abs(t - q) < 30 for _, q in picked): continue
+            a, b = t - 15, t + 13  # setup 15 s, action ~3 s, reaction 10 s
+            if (ch, sess, int(a)) in used_keys: continue
+            segs = segments_for(recs, a, b)
+            if segs: picked.append((z, t)); 
+            else: continue
+            cuts = sum(scene_changes(r["abs"], f, max(0.1, to - f)) for r, f, to in segments_for(recs, t - 8, t + 8) or [])
+            cands.append({"channel": ch, "session": sess, "a": a, "b": b, "score": z + 0.3 * min(cuts, 10), "segs": segs,
+                          "reason": f"громкость +{z:.1f} дБ к фону, смен сцены рядом: {cuts}; время чата не сверено — выбор по звуку и картинке"})
+    return sorted(cands, key=lambda c: -c["score"])
+
+def ass_time(t): t = max(0.0, t); return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
+def ass_text(s): return (s or "").replace("\\", "").replace("{", "(").replace("}", ")").replace("\n", " ")
+
+def write_ass(cues, path):
+    head = ("[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n\n[V4+ Styles]\n"
+            "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Outline, Shadow, Alignment, MarginV\n"
+            "Style: Main,Arial,66,&H00FFFFFF,&H00000000,&H64000000,1,5,0,2,430\nStyle: Alt,Arial,46,&H0000F0FF,&H00000000,&H64000000,1,4,0,2,350\n\n"
+            "[Events]\nFormat: Layer, Start, End, Style, Text\n")
+    lines = []
+    for c in cues:
+        lines.append(f"Dialogue: 0,{ass_time(c['start'])},{ass_time(c['end'] + 0.25)},Main,{ass_text(c['text'])}")
+        if c.get("alt"): lines.append(f"Dialogue: 0,{ass_time(c['start'])},{ass_time(c['end'] + 0.25)},Alt,{ass_text(c['alt'])}")
+    with open(path, "w", encoding="utf-8") as f: f.write(head + "\n".join(lines) + "\n")
+
+def has_subtitles_filter():
+    r = subprocess.run([FFMPEG, "-hide_banner", "-filters"], capture_output=True, creationflags=NOWIN)
+    return b" subtitles " in r.stdout
+
+def render_candidate(segs, out, cues=None, audio_only=False):
+    """Stitch pieces (re-timed, original audio), frame 9:16 over a blurred fill, burn RU/EN captions if available."""
+    args, parts = [], []
+    for i, (r, f, t) in enumerate(segs):
+        args += ["-ss", f"{f:.3f}", "-t", f"{t - f:.3f}", "-i", r["abs"]]
+        parts.append(f"[{i}:a]aresample=48000,aformat=channel_layouts=stereo[a{i}]" if audio_only else
+                     f"[{i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v{i}];[{i}:a]aresample=48000,aformat=channel_layouts=stereo[a{i}]")
+    n = len(segs); cwd = os.path.dirname(out)
+    if audio_only:
+        fc = ";".join(parts) + ";" + "".join(f"[a{i}]" for i in range(n)) + f"concat=n={n}:v=0:a=1[ca]"
+        cmd = [FFMPEG, "-hide_banner", "-loglevel", "error", "-y", *args, "-filter_complex", fc, "-map", "[ca]", "-ac", "1", "-c:a", "aac", "-b:a", "64k", out]
+    else:
+        sub = ""
+        if cues: write_ass(cues, os.path.join(cwd, "c.ass")); sub = ",subtitles=c.ass"  # relative name: no Windows drive-letter escaping
+        fc = (";".join(parts) + ";" + "".join(f"[v{i}][a{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=1[cv][ca];"
+              "[cv]split[x][y];[x]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=24:2,eq=brightness=-0.08[bg];"
+              f"[y]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p{sub}[v]")
+        cmd = [FFMPEG, "-hide_banner", "-loglevel", "error", "-y", *args, "-filter_complex", fc, "-map", "[v]", "-map", "[ca]",
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-r", "30", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", os.path.basename(out)]
+    subprocess.run(cmd, check=True, timeout=900, capture_output=True, creationflags=NOWIN, cwd=cwd)
+
+def put(url, path, ctype):
+    with open(path, "rb") as f: data = f.read()
+    urllib.request.urlopen(urllib.request.Request(url, data=data, method="PUT", headers={"Content-Type": ctype, "x-upsert": "true"}), timeout=300).read()
+
+reported = {}
+def report_index(idx):
+    rows = []
+    for rel, r in idx.items():
+        sig = (r["status"], r.get("duration_s"), r.get("aligned"), r.get("size_bytes"))
+        if reported.get(rel) == sig: continue
+        rows.append({k: r.get(k) for k in ("rel_path", "channel", "session", "file_name", "size_bytes", "duration_s", "start_at", "aligned", "status", "detail")}); reported[rel] = sig
+    for i in range(0, len(rows), 400): api("folder_index", files=rows[i:i + 400])
+
+def folder_cycle(idx):
+    sessions = scan_folder(FOLDER, idx); save_fidx({k: {x: y for x, y in v.items() if x != "abs"} for k, v in idx.items()}); report_index(idx)
+    nxt = api("folder_next")
+    if not nxt.get("render"): return nxt.get("why")
+    cands = rank_candidates(sessions, nxt.get("monitors", []), nxt.get("highlights", []), nxt.get("used", []))
+    save_fidx({k: {x: y for x, y in v.items() if x != "abs"} for k, v in idx.items()})
+    if not cands: return "готовых файлов для кандидата пока нет"
+    c = cands[0]; segs = [{"file": r["rel_path"], "from_s": round(f, 2), "to_s": round(t, 2)} for r, f, t in c["segs"]]
+    made = api("candidate_create", channel=c["channel"], segments=segs, score=round(c["score"], 2), reason=c["reason"], window_info={"channel": c["channel"], "session": c["session"], "a": int(c["a"]), "b": int(c["b"])})
+    if made.get("error"): return made["error"]
+    cid = made["id"]
+    try:
+        with tempfile.TemporaryDirectory() as t:
+            api("candidate_progress", id=cid, status="transcribing", detail="звук отправлен на распознавание")
+            aud = os.path.join(t, "a.m4a"); render_candidate(c["segs"], aud, audio_only=True); put(made["audio_upload_url"], aud, "audio/mp4")
+            cues, note = [], ""
+            for _ in range(40):
+                tr = api("candidate_transcribe", id=cid)
+                if tr.get("state") == "done": cues, note = tr.get("captions") or [], tr.get("note") or ""; break
+                time.sleep(5)
+            if cues and not has_subtitles_filter(): cues, note = [], "этот ffmpeg без фильтра subtitles — клип без субтитров"
+            api("candidate_progress", id=cid, status="rendering", detail=f"рендер 9:16; {note or 'без субтитров (распознавание не успело)'}")
+            out = os.path.join(t, "clip.mp4"); render_candidate(c["segs"], out, cues); put(made["video_upload_url"], out, "video/mp4")
+            r = api("candidate_complete", id=cid); return "кандидат готов" if r.get("ok") else r.get("error")
+    except Exception as e:
+        err = sanitize(e.stderr.decode("utf-8", "replace")[-250:] if isinstance(e, subprocess.CalledProcessError) and e.stderr else str(e))
+        api("candidate_fail", id=cid, error=err[:280]); return err
+
+def folder_loop():
+    idx = load_fidx(); last = None
+    while True:
+        try:
+            msg = folder_cycle(idx)
+            if msg != last: print("папка:", msg, flush=True); last = msg
+        except Exception as e: print("папка, ошибка:", sanitize(str(e)), flush=True)
+        time.sleep(30)
+
 SCENE_S = int(os.environ.get("INVERK_SCENE_SECONDS", "60"))
 def scene_loop():
     """Visual game check from the newest finished segment; own thread so capture/cutting never waits."""
@@ -298,7 +528,11 @@ def scene_loop():
             except Exception as e: print("scene error", e, flush=True)
 
 def main():
+    global FOLDER
     find_tools(); configure(); os.makedirs(BUF, exist_ok=True)
+    fa = sys.argv[sys.argv.index("--folder") + 1] if "--folder" in sys.argv[:-1] else os.environ.get("INVERK_FOLDER") or os.path.join(os.path.expanduser("~"), "Videos", "StreamClips")
+    if os.path.isdir(fa) and "--no-folder" not in sys.argv:
+        FOLDER = fa; print(f"Папка записей (только чтение): {FOLDER}", flush=True); threading.Thread(target=folder_loop, daemon=True).start()
     print(f"Inverk рекордер {VERSION} запущен. Буфер: {BUF}. Окно можно свернуть; Ctrl+C — остановить.", flush=True)
     threading.Thread(target=scene_loop, daemon=True).start()
     try:

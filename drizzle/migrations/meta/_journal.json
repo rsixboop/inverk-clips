@@ -57,6 +57,13 @@
       "when": 1795003028965,
       "tag": "0007_recorder_state",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795004263765,
+      "tag": "0008_local_footage",
+      "breakpoints": true
     }
   ]
 }

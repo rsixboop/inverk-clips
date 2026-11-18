@@ -107,3 +107,12 @@ export const revokeWorkerTokens = createServerFn({ method: "POST" }).middleware(
   if (error) throw new Error(error.message);
   return { revoked: data?.length ?? 0 };
 });
+
+export const candidateUrl = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: c } = await context.supabase.from("local_candidates").select("output_path").eq("id", data.id).maybeSingle();
+    if (!c?.output_path) throw new Error("Клип ещё не готов");
+    const { data: s, error } = await (await admin()).storage.from("outputs").createSignedUrl(c.output_path, 3600);
+    if (error) throw new Error(error.message);
+    return { url: s.signedUrl };
+  });
