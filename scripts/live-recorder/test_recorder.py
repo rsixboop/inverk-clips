@@ -63,6 +63,67 @@ class Fixture(unittest.TestCase):
         R.done.add("h1"); R.process({"id": "h1", "claim": "c", "monitor_id": self.mid}, {"media_mode": "recorder"})
         self.assertEqual(calls, [("fail", {"id": "h1", "claim": "c", "error": "уже загружено этим рекордером", "retryable": False})])
 
+class Selective(unittest.TestCase):
+    """Best-quality stream copy buffer -> chat spike -> audio/vision validation -> clip only for confirmed moments."""
+    @classmethod
+    def setUpClass(cls):
+        R.FFMPEG = shutil.which("ffmpeg"); cls.tmp = tempfile.mkdtemp(); R.BUF = cls.tmp; cls.mid = "sel"
+        d = os.path.join(cls.tmp, cls.mid, "1"); os.makedirs(d)
+        # 1280x720 60 fps source, quiet commentary then a loud 8 s burst at 30-38 s (the "action/reaction").
+        src = subprocess.Popen([R.FFMPEG, "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=s=1280x720:r=60:d=70", "-f", "lavfi", "-i",
+                                "sine=f=300:d=70,volume='if(between(t,30,38),1,0.03)':eval=frame", "-c:v", "libx264", "-g", "60", "-c:a", "aac", "-f", "mpegts", "pipe:1"], stdout=subprocess.PIPE)
+        subprocess.run(R.ffmpeg_segment_cmd("mpegts"), stdin=src.stdout, cwd=d, check=True, stderr=subprocess.DEVNULL); src.wait()
+        first = next(open(os.path.join(d, "list.csv"))).split(",")
+        json.dump({"wall": W0, "pts": float(first[1])}, open(os.path.join(d, "meta.json"), "w"))
+
+    def run_process(self, hid, chatters, scenes):
+        calls, uploads = [], []
+        def api(action, **kw):
+            calls.append((action, kw)); return {"scenes": scenes} if action == "validate_frames" else {"ok": True}
+        class Up:
+            def read(self): return b""
+        R.api = api; R.urllib.request.urlopen = lambda req, timeout=0: uploads.append(len(req.data)) or Up()
+        R.process({"id": hid, "claim": "c", "monitor_id": self.mid, "start_at": iso(W0 + 30), "end_at": iso(W0 + 34), "chatters": chatters, "upload_url": "https://x"}, {"media_mode": "recorder"})
+        return calls, uploads
+
+    def test_stream_copy_keeps_source_quality(self):
+        seg = R.all_segments(self.mid)[0][0]
+        self.assertEqual(R.probe_quality(seg), "1280x720 60fps")
+
+    def test_confirmed_gameplay_spike_is_clipped(self):
+        calls, uploads = self.run_process("g1", 14, [{"activity": "gameplay", "confidence": 0.9, "game": "Rust"}] * 3)
+        frames = next(kw for a, kw in calls if a == "validate_frames")["frames"]; self.assertEqual(len(frames), 3)
+        done = next(kw for a, kw in calls if a == "complete"); self.assertTrue(done["note"].startswith("выбрано"), done["note"])
+        self.assertIn("звук +", done["note"]); self.assertEqual(len(uploads), 1); self.assertGreater(uploads[0], 100_000)
+
+    def test_routine_menu_spike_is_skipped_without_render(self):
+        calls, uploads = self.run_process("m1", 14, [{"activity": "menu", "confidence": 0.9}] * 3)
+        fail = next(kw for a, kw in calls if a == "fail"); self.assertIn("рутина", fail["error"]); self.assertFalse(fail["retryable"]); self.assertEqual(uploads, [])
+
+    def test_few_chatters_skipped_before_any_check(self):
+        calls, uploads = self.run_process("c1", 3, [])
+        self.assertNotIn("validate_frames", [a for a, _ in calls]); self.assertIn("мало уникальных", calls[-1][1]["error"]); self.assertEqual(uploads, [])
+
+    def test_vision_unavailable_is_disclosed(self):
+        calls, _ = self.run_process("v1", 14, [{"activity": "unavailable"}] * 3)
+        note = next(kw for a, kw in calls if a in ("complete", "fail")); text = note.get("note") or note.get("error")
+        self.assertIn("кадры: проверка недоступна", text)
+
+    def test_audio_surge_measured_from_real_buffer(self):
+        segs = R.all_segments(self.mid); paths, seek, dur = R.plan_cut(segs, W0 + 30, W0 + 34)
+        lst = os.path.join(self.tmp, "l.txt"); open(lst, "w").write("".join(f"file '{p}'\n" for p in paths))
+        self.assertGreater(R.surge(R.window_audio(["-f", "concat", "-safe", "0", "-i", lst], seek, dur)), 20)
+
+class Decide(unittest.TestCase):
+    def test_rules(self):
+        g = [{"activity": "gameplay", "confidence": 0.9}]
+        self.assertFalse(R.decide(5, 20, g)[0])                       # one small group of chatters never qualifies
+        self.assertTrue(R.decide(10, 1, g)[0])                        # confident gameplay confirms
+        self.assertFalse(R.decide(10, 4, [{"activity": "chatting", "confidence": 0.8}] * 2)[0])
+        self.assertFalse(R.decide(10, 7, [{"activity": "gameplay", "confidence": 0.4}])[0])  # low-confidence vision, modest audio
+        self.assertTrue(R.decide(10, 10, [])[0])                      # no vision: only a strong surge, disclosed
+        self.assertFalse(R.decide(10, None, [])[0])
+
 class Handoff(unittest.TestCase):
     """Streamlink -> ffmpeg handoff: container sniffing, junk-prefix recovery, real Streamlink 8.6.3 args."""
     def run_relay(self, payload_cmd, junk=b""):

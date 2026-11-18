@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Inverk Clips live recorder (Windows / macOS / Linux). Run it on your own PC for streams you own or may record.
 
-Keeps a rolling buffer of 10 s MPEG-TS segments per recorder monitor (Streamlink -> ffmpeg, stream copy),
-claims due chat-spike highlights, cuts 20 s before the spike to 15 s after it with the original audio,
+Keeps a bounded rolling buffer (INVERK_KEEP_SECONDS, default 15 min) of 10 s MPEG-TS segments per recorder monitor
+(Streamlink "best" -> ffmpeg stream copy, no re-encode, nothing kept permanently), claims due chat-spike highlights,
+validates each one conservatively (chat breadth + audio surge + vision on buildup/peak/reaction frames) and skips routine ones, cuts 20 s before the spike to 15 s after it with the original audio,
 renders a 1080x1920 vertical MP4, uploads it to a one-time signed URL and reports heartbeat/buffer/errors.
 
 The worker token is asked once (hidden input) and stored in your user profile, never printed or logged.
@@ -10,7 +11,7 @@ Windows: start inverk-recorder.bat (downloaded from Sources). Others: INVERK_URL
 """
 import base64, calendar, csv, getpass, glob, json, os, shutil, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 
-VERSION = "2.2"
+VERSION = "2.3"
 SEG, PRE, POST = 10, 20, 15
 KEEP_S = int(os.environ.get("INVERK_KEEP_SECONDS", "900"))
 IS_WIN = os.name == "nt"
@@ -213,6 +214,15 @@ class Session:
                 except subprocess.TimeoutExpired: p.kill()
         self.relay.join(3); self.sl_log.close(); self.ff_log.close()
 
+QUALITY_RE = re.compile(r"Video: .*?(\d{3,5})x(\d{3,5}).*?([\d.]+) fps")
+def probe_quality(path):
+    """Actual resolution/fps of a captured segment, e.g. '1920x1080 60fps', from ffmpeg's stream header."""
+    try: err = subprocess.run([FFMPEG, "-hide_banner", "-i", path], capture_output=True, timeout=20, creationflags=NOWIN).stderr.decode("utf-8", "replace")
+    except Exception: return None
+    m = QUALITY_RE.search(err)
+    return f"{m.group(1)}x{m.group(2)} {float(m.group(3)):g}fps" if m else None
+quality = {}
+
 def sync_monitors():
     r = api("monitors"); ms = r.get("monitors", [])
     if r.get("error", "").startswith("401"):  # token revoked in Sources: forget it and ask for a new one on next start
@@ -221,6 +231,7 @@ def sync_monitors():
     live = {m["id"]: m for m in ms if m["media_mode"] == "recorder" and m["status"] == "live" and m.get("record_url")}
     for mid, s in list(procs.items()):
         if mid not in live or not s.alive() or live[mid]["record_url"] != s.url:
+            quality.pop(mid, None)
             if not s.alive():
                 errors[mid] = "Захват прервался: " + s.diagnose(); fails[mid] = fails.get(mid, 0) + 1
                 retry_at[mid] = time.time() + min(120, 10 * 2 ** (fails[mid] - 1)); errors[mid] += f" — повтор через {int(retry_at[mid] - time.time())} с"; print(errors[mid], flush=True)
@@ -240,8 +251,9 @@ def sync_monitors():
         tail = [x for x in segs if s and x[0].startswith(s.dir)]
         buf = (tail[-1][2] - tail[0][1]) if tail else 0
         if buf > SEG: fails[m["id"]] = 0
+        if tail and m["id"] not in quality: quality[m["id"]] = probe_quality(tail[0][0])
         err = None if (s and s.alive()) else errors.get(m["id"]) or ("Эфир не идёт — запись не ведётся" if m["status"] != "live" else "Нет ссылки на эфир")
-        states.append({"id": m["id"], "buffer_s": round(buf, 1), "ready": bool(s and s.alive() and buf >= PRE + SEG), "error": err})
+        states.append({"id": m["id"], "buffer_s": round(buf, 1), "quality": quality.get(m["id"]) if s else None, "ready": bool(s and s.alive() and buf >= PRE + SEG), "error": err})
     api("status", monitors=states, version=VERSION, tools=f"streamlink+ffmpeg ({'Windows' if IS_WIN else sys.platform})")
     return {m["id"]: m for m in ms}
 
@@ -256,7 +268,66 @@ def render(inp_args, seek, dur, out):
 
 def iso_ts(s): return calendar.timegm(time.strptime(s[:19], "%Y-%m-%dT%H:%M:%S")) + (float("0" + s[19:s.find("+") if "+" in s else None].rstrip("Z")) if s[19:20] == "." else 0)
 
-def cut_highlight(h, mon, out):
+# ---------- conservative validation of a chat spike (pure decide() is unit-tested) ----------
+MIN_CHATTERS = int(os.environ.get("INVERK_MIN_CHATTERS", "8"))   # distinct chatters reacting in the spike
+MIN_SURGE_DB = float(os.environ.get("INVERK_MIN_SURGE_DB", "6"))  # peak loudness over the buildup baseline
+ROUTINE = {"menu", "chatting"}
+
+def decide(chatters, surge_db, scenes):
+    """(keep, reason). Chat breadth is required; then the footage itself must confirm: a confident routine scene
+    (menu/just chatting) at peak+reaction rejects, confident gameplay or a strong audio surge confirms. When vision is
+    unavailable it is said so and only a stronger audio surge can confirm - never a fake semantic confirmation."""
+    why = [f"чат: {chatters} уникальных"]
+    if chatters < MIN_CHATTERS: return False, f"пропущено — мало уникальных зрителей ({chatters} < {MIN_CHATTERS})"
+    why.append("звук: нет данных" if surge_db is None else f"звук +{surge_db:.1f} дБ к разгону")
+    seen = [x for x in scenes if x.get("activity") not in (None, "unavailable", "unknown") and float(x.get("confidence") or 0) >= 0.7]
+    if not seen:
+        why.append("кадры: проверка недоступна" if not scenes or all(x.get("activity") == "unavailable" for x in scenes) else "кадры: неуверенно")
+        if surge_db is not None and surge_db >= MIN_SURGE_DB + 3: return True, "выбрано — " + "; ".join(why) + " (подтверждено только звуком)"
+        return False, "пропущено — нет уверенного подтверждения: " + "; ".join(why)
+    acts = [x["activity"] for x in seen]
+    why.append("кадры: " + ", ".join(acts) + (f" ({seen[-1].get('game')})" if seen[-1].get("game") else ""))
+    if all(a in ROUTINE for a in acts[-2:]):
+        return False, "пропущено — рутина (меню/болтовня) в момент реакции: " + "; ".join(why)
+    if "gameplay" in acts or (surge_db is not None and surge_db >= MIN_SURGE_DB): return True, "выбрано — " + "; ".join(why)
+    return False, "пропущено — слабое подтверждение: " + "; ".join(why)
+
+def surge(levels, pre=PRE):
+    """Loudness jump: max of peak..end vs median of the buildup's first pre-5 seconds."""
+    base, peak = levels[:max(1, pre - 5)], levels[pre - 3:]
+    if len(base) < 5 or not peak: return None
+    return max(peak) - sorted(base)[len(base) // 2]
+
+def window_audio(inp_args, seek, dur):
+    with tempfile.TemporaryDirectory() as t:
+        wav = os.path.join(t, "a.wav")
+        r = subprocess.run([FFMPEG, "-hide_banner", "-loglevel", "error", "-y", *inp_args, "-ss", f"{seek:.3f}", "-t", f"{dur:.3f}", "-vn", "-ac", "1", "-ar", "16000", wav],
+                           capture_output=True, timeout=120, creationflags=NOWIN)
+        return audio_rms(wav) if r.returncode == 0 and os.path.isfile(wav) else []
+
+def window_frames(inp_args, seek, at):
+    out = []
+    for t in at:
+        jpg = subprocess.run([FFMPEG, "-loglevel", "error", *inp_args, "-ss", f"{seek + t:.3f}", "-frames:v", "1", "-vf", "scale=768:-2", "-q:v", "6", "-f", "image2", "pipe:1"],
+                             capture_output=True, timeout=60, creationflags=NOWIN).stdout
+        if jpg: out.append(base64.b64encode(jpg).decode())
+    return out
+
+def validate(h, inp_args, seek, dur):
+    chatters = int(h.get("chatters") or 0)
+    if chatters < MIN_CHATTERS: return decide(chatters, None, [])  # cheap reject before any audio/vision work
+    spike = max(1.0, iso_ts(h["end_at"]) - iso_ts(h["start_at"]))
+    lv = window_audio(inp_args, seek, dur)
+    frames = window_frames(inp_args, seek, [PRE - 6, PRE + spike / 2, min(dur - 1, PRE + spike + 6)])  # buildup / action / reaction
+    scenes = []
+    if frames:
+        r = api("validate_frames", monitor_id=h["monitor_id"], frames=frames)
+        scenes = r.get("scenes") or [{"activity": "unavailable", "note": sanitize(str(r.get("error", "")))}]
+    return decide(chatters, surge(lv) if lv else None, scenes)
+
+class Skipped(Exception): pass
+
+def cut_highlight(h, mon, out, check=False):
     if mon.get("media_mode") == "recording_url":
         if h.get("offset_s") is None: raise NoMedia("Неизвестно время начала эфира — нельзя найти момент в записи")
         dur = iso_ts(h["end_at"]) - iso_ts(h["start_at"]) + PRE + POST
@@ -264,20 +335,27 @@ def cut_highlight(h, mon, out):
     paths, seek, dur = plan_cut(all_segments(h["monitor_id"]), iso_ts(h["start_at"]), iso_ts(h["end_at"]))
     lst = out + ".txt"
     with open(lst, "w", encoding="utf-8") as f: f.write("".join("file '{}'\n".format(p.replace("\\", "/").replace("'", "'\\''")) for p in paths))
-    render(["-f", "concat", "-safe", "0", "-i", lst], seek, dur, out)
+    inp = ["-f", "concat", "-safe", "0", "-i", lst]
+    note = None
+    if check:
+        keep, note = validate(h, inp, seek, dur)
+        if not keep: raise Skipped(note)
+    render(inp, seek, dur, out)
+    return note
 
 def process(h, mon):
     if h["id"] in done: return api("fail", id=h["id"], claim=h["claim"], error="уже загружено этим рекордером", retryable=False)
     with tempfile.TemporaryDirectory() as t:
         out = os.path.join(t, "clip.mp4")
-        try: cut_highlight(h, mon, out)
+        try: note = cut_highlight(h, mon, out, check=True)
+        except Skipped as e: print("момент", h["id"][:8], str(e), flush=True); return api("fail", id=h["id"], claim=h["claim"], error=str(e), retryable=False)
         except NoMedia as e: return api("fail", id=h["id"], claim=h["claim"], error=str(e), retryable=False)
         except NotYet as e: return api("fail", id=h["id"], claim=h["claim"], error=str(e), retryable=True)
         except subprocess.CalledProcessError as e:
             return api("fail", id=h["id"], claim=h["claim"], error="ffmpeg: " + (e.stderr or b"").decode("utf-8", "replace")[-250:], retryable=True)
         with open(out, "rb") as f: data = f.read()
         urllib.request.urlopen(urllib.request.Request(h["upload_url"], data=data, method="PUT", headers={"Content-Type": "video/mp4", "x-upsert": "true"}), timeout=300).read()
-        r = api("complete", id=h["id"], claim=h["claim"])
+        r = api("complete", id=h["id"], claim=h["claim"], note=note)
         if r.get("ok"): done.add(h["id"])
         print("клип", h["id"][:8], f"{len(data) / 1048576:.1f} МБ", "готов" if r.get("ok") else r, flush=True)
 

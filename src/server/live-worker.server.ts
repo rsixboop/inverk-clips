@@ -37,10 +37,20 @@ export async function handleWorker(request: Request): Promise<Response> {
     for (const m of list) {
       if (typeof m?.id !== "string") continue;
       const state = { at, version: String((body as any).version ?? "").slice(0, 20), buffer_s: Math.max(0, Math.min(86400, Number(m.buffer_s) || 0)), ready: m.ready === true,
-        error: m.error ? String(m.error).slice(0, 300) : null, tools: String((body as any).tools ?? "").slice(0, 200) };
+        error: m.error ? String(m.error).slice(0, 300) : null, quality: m.quality ? String(m.quality).slice(0, 60) : null, tools: String((body as any).tools ?? "").slice(0, 200) };
       await db.from("live_monitors").update({ recorder_state: state }).eq("id", m.id).eq("user_id", uid);
     }
     return Response.json({ ok: true });
+  }
+  if (body.action === "validate_frames") { // semantic check of a chat-spike candidate: real buffer frames → vision; never rate-limited scene log
+    const b = body as unknown as { monitor_id?: string; frames?: string[] };
+    const { data: mon } = await db.from("live_monitors").select("id").eq("id", String(b.monitor_id ?? "")).eq("user_id", uid).maybeSingle();
+    if (!mon) return Response.json({ error: "monitor not found" }, { status: 404 });
+    const { classifyFrame, MAX_FRAME_BYTES } = await import("@/server/live-vision.server");
+    const frames = (Array.isArray(b.frames) ? b.frames : []).filter((f) => typeof f === "string" && f.length * 0.75 <= MAX_FRAME_BYTES).slice(0, 3);
+    const scenes = [];
+    for (const f of frames) { try { scenes.push(await classifyFrame(f)); } catch (e) { scenes.push({ game: null, activity: "unavailable", confidence: 0, note: `vision: ${(e as Error).message.slice(0, 100)}` }); } }
+    return Response.json({ scenes });
   }
   if (body.action === "frame") { // visual game check from the recorder's buffer; never blocks capture
     const b = body as unknown as { monitor_id?: string; frame_at?: string; jpeg_base64?: string; unavailable?: string };
@@ -74,6 +84,7 @@ export async function handleWorker(request: Request): Promise<Response> {
       return Response.json({ ok: true, retry });
     }
     const r = await finalizeHighlight(db, uid, h, "recorder");
+    if (!("error" in r) && (body as any).note) await db.from("live_highlights").update({ detail: String((body as any).note).slice(0, 300) }).eq("id", h.id);
     if ("error" in r) return Response.json({ error: r.error }, { status: 400 });
     return Response.json({ ok: true, job_id: r.job_id });
   }
