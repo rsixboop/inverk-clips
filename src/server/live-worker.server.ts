@@ -79,6 +79,7 @@ export async function handleWorker(request: Request): Promise<Response> {
     if (b.jpeg_base64 && b.jpeg_base64.length * 0.75 > MAX_FRAME_BYTES) return Response.json({ error: "frame too large" }, { status: 413 });
     return Response.json(await recordScene(db, uid, b.monitor_id, new Date(b.frame_at), b.jpeg_base64 ?? null, b.unavailable));
   }
+  if (body.action === "event_scan") return handleEventScan(db, uid, body as any);
   if (body.action === "claim") {
     const now = new Date().toISOString();
     const { data: due } = await db.from("live_highlights").select(CLAIM_COLUMNS).eq("user_id", uid).eq("status", "awaiting_media")
@@ -130,4 +131,41 @@ export async function finalizeHighlight(db: Db, uid: string, h: any, source: "re
       plan: { title: `Хайлайт эфира · ${mon?.channel_title ?? mon?.input}`, live: { highlight_id: h.id, platform: mon?.platform, peak_at: h.peak_at, score: h.score, source } } }, { onConflict: "user_id,idempotency_key" }).select("id").single();
     await db.from("live_highlights").update({ status: "done", job_id: job?.id ?? null, claim: null, detail: `MP4 ${info.video.width}×${info.video.height}, ${(info.durationS || durationHint || 0).toFixed(1)} с${source === "tab" ? " · из вкладки Chrome" : ""}` }).eq("id", h.id);
   return { job_id: job?.id };
+}
+
+/** Gameplay-event path: successive buffered frames → vision → confident, non-routine, non-repeated event becomes a
+ * highlight (trigger=vision) even with zero chatters; overlapping chat only boosts score. Cost bounded by canScan. */
+async function handleEventScan(db: Db, uid: string, b: { monitor_id?: string; frames?: string[]; frame_times?: string[] }) {
+  const L = await import("@/lib/live-events");
+  const times = (b.frame_times ?? []).map((t) => Date.parse(t));
+  const frames = (Array.isArray(b.frames) ? b.frames : []).filter((f) => typeof f === "string" && f.length * 0.75 <= 400_000).slice(0, 3);
+  if (frames.length < 2 || times.length !== frames.length || times.some(Number.isNaN)) return Response.json({ error: "bad frames" }, { status: 400 });
+  const { data: mons } = await db.from("live_monitors").select("id,event_state").eq("user_id", uid);
+  const mon = (mons ?? []).find((m) => m.id === b.monitor_id);
+  if (!mon) return Response.json({ error: "monitor not found" }, { status: 404 });
+  const now = Date.now(); const state = (mon.event_state ?? {}) as any;
+  const gate = L.canScan(state, (mons ?? []).filter((m) => m.id !== mon.id).map((m: any) => m.event_state?.scan_at), now);
+  if (!gate.ok) return Response.json({ skipped: gate.why });
+  let next = { ...state, scan_at: new Date(now).toISOString() };
+  await db.from("live_monitors").update({ event_state: next }).eq("id", mon.id);
+  let ev; try { ev = await L.classifyEventSafe(frames); } catch (e) { ev = null; }
+  if (!ev) return Response.json({ event: null, reason: "кадры: проверка недоступна" });
+  const d = L.decideEvent(ev, next, now);
+  if (!d.keep) return Response.json({ keep: false, reason: d.reason, event: ev });
+  next = L.rememberEvent(next, ev.label, new Date(now).toISOString());
+  await db.from("live_monitors").update({ event_state: next }).eq("id", mon.id);
+  const start = new Date(Math.min(...times)), end = new Date(Math.max(...times));
+  const lo = new Date(start.getTime() - 30_000).toISOString(), hi = new Date(end.getTime() + 30_000).toISOString();
+  const { data: near } = await db.from("live_highlights").select("id,status,chatters").eq("monitor_id", mon.id).eq("user_id", uid).lte("start_at", hi).gte("end_at", lo);
+  const chatters = Math.max(0, ...(near ?? []).map((h) => h.chatters ?? 0));
+  const score = L.eventScore(ev.confidence, chatters), detail = d.reason + (chatters ? ` · чат: ${chatters} уникальных` : " · чат: тихо");
+  const pending = (near ?? []).find((h) => h.status === "awaiting_media" || h.status === "timestamp_only");
+  if (pending) { // same moment already queued from chat: upgrade it instead of a duplicate clip
+    await db.from("live_highlights").update({ trigger: "vision", reason: d.reason, score, detail }).eq("id", pending.id);
+    return Response.json({ keep: true, highlight_id: pending.id, merged: true, reason: d.reason });
+  }
+  if ((near ?? []).some((h) => h.status === "claimed" || h.status === "done")) return Response.json({ keep: false, reason: "уже есть клип этого момента" });
+  const { data: h } = await db.from("live_highlights").insert({ user_id: uid, monitor_id: mon.id, start_at: start.toISOString(), end_at: end.toISOString(),
+    peak_at: new Date((start.getTime() + end.getTime()) / 2).toISOString(), chatters, emotes: 0, score, status: "awaiting_media", trigger: "vision", reason: d.reason, detail }).select("id").single();
+  return Response.json({ keep: true, highlight_id: h?.id, reason: d.reason });
 }

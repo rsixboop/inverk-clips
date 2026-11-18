@@ -64,6 +64,13 @@
       "when": 1795004263765,
       "tag": "0008_local_footage",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795012557282,
+      "tag": "0009_migration",
+      "breakpoints": true
     }
   ]
 }

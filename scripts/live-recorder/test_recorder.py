@@ -76,14 +76,14 @@ class Selective(unittest.TestCase):
         first = next(open(os.path.join(d, "list.csv"))).split(",")
         json.dump({"wall": W0, "pts": float(first[1])}, open(os.path.join(d, "meta.json"), "w"))
 
-    def run_process(self, hid, chatters, scenes):
+    def run_process(self, hid, chatters, scenes, **extra):
         calls, uploads = [], []
         def api(action, **kw):
             calls.append((action, kw)); return {"scenes": scenes} if action == "validate_frames" else {"ok": True}
         class Up:
             def read(self): return b""
         R.api = api; R.urllib.request.urlopen = lambda req, timeout=0: uploads.append(len(req.data)) or Up()
-        R.process({"id": hid, "claim": "c", "monitor_id": self.mid, "start_at": iso(W0 + 30), "end_at": iso(W0 + 34), "chatters": chatters, "upload_url": "https://x"}, {"media_mode": "recorder"})
+        R.process({"id": hid, "claim": "c", "monitor_id": self.mid, "start_at": iso(W0 + 30), "end_at": iso(W0 + 34), "chatters": chatters, "upload_url": "https://x", **extra}, {"media_mode": "recorder"})
         return calls, uploads
 
     def test_stream_copy_keeps_source_quality(self):
@@ -99,6 +99,19 @@ class Selective(unittest.TestCase):
     def test_routine_menu_spike_is_skipped_without_render(self):
         calls, uploads = self.run_process("m1", 14, [{"activity": "menu", "confidence": 0.9}] * 3)
         fail = next(kw for a, kw in calls if a == "fail"); self.assertIn("рутина", fail["error"]); self.assertFalse(fail["retryable"]); self.assertEqual(uploads, [])
+
+    def test_quiet_gameplay_event_is_clipped_without_chatters(self):
+        calls, uploads = self.run_process("e1", 0, [], trigger="vision", reason="Игровое событие (новое взаимодействие, 0.86): enters club, talks to NPC")
+        self.assertNotIn("validate_frames", [a for a, _ in calls])
+        done = next(kw for a, kw in calls if a == "complete"); self.assertIn("talks to NPC", done["note"]); self.assertIn("чат: тихо", done["note"])
+        self.assertEqual(len(uploads), 1); self.assertGreater(uploads[0], 100_000)
+
+    def test_event_scan_sends_successive_frames_and_skips_static(self):
+        sent = []; R.api = lambda action, **kw: sent.append((action, kw)) or {"keep": True}
+        segs = R.all_segments(self.mid); r = R.event_scan(self.mid, segs)  # testsrc is animated -> scanned
+        self.assertTrue(r["keep"]); a, kw = sent[0]; self.assertEqual(a, "event_scan"); self.assertEqual(len(kw["frames"]), 3)
+        self.assertEqual(kw["frame_times"], sorted(kw["frame_times"]))
+        self.assertTrue(R.static([b"\x10" * 144] * 3)); self.assertFalse(R.static([b"\x10" * 144, b"\x80" * 144, b"\x10" * 144]))
 
     def test_few_chatters_skipped_before_any_check(self):
         calls, uploads = self.run_process("c1", 3, [])
@@ -166,7 +179,7 @@ class ClaimContract(unittest.TestCase):
 
     ROW = {"id": "895727e2", "user_id": "u", "monitor_id": "mon", "start_at": "2026-11-18T13:57:50+00:00", "end_at": "2026-11-18T13:58:35+00:00",
            "peak_at": "2026-11-18T13:58:10+00:00", "offset_s": None, "attempts": 0, "score": 41.0, "chatters": 32, "emotes": 3,
-           "status": "awaiting_media", "detail": None, "claim": None, "claim_until": None, "output_path": None, "job_id": None}
+           "status": "awaiting_media", "detail": None, "claim": None, "claim_until": None, "output_path": None, "job_id": None, "trigger": "chat", "reason": None}
 
     def test_projection_carries_chatters_into_decision(self):
         h = self.claim_payload(self.ROW); self.assertEqual(h["chatters"], 32)

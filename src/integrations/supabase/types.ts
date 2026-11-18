@@ -206,9 +206,11 @@ export type Database = {
           offset_s: number | null
           output_path: string | null
           peak_at: string
+          reason: string | null
           score: number
           start_at: string
           status: string
+          trigger: string
           updated_at: string
           user_id: string
         }
@@ -227,9 +229,11 @@ export type Database = {
           offset_s?: number | null
           output_path?: string | null
           peak_at: string
+          reason?: string | null
           score: number
           start_at: string
           status?: string
+          trigger?: string
           updated_at?: string
           user_id: string
         }
@@ -248,9 +252,11 @@ export type Database = {
           offset_s?: number | null
           output_path?: string | null
           peak_at?: string
+          reason?: string | null
           score?: number
           start_at?: string
           status?: string
+          trigger?: string
           updated_at?: string
           user_id?: string
         }
@@ -269,6 +275,7 @@ export type Database = {
           channel_id: string | null
           channel_title: string | null
           created_at: string
+          event_state: Json
           id: string
           input: string
           last_poll_at: string | null
@@ -295,6 +302,7 @@ export type Database = {
           channel_id?: string | null
           channel_title?: string | null
           created_at?: string
+          event_state?: Json
           id?: string
           input: string
           last_poll_at?: string | null
@@ -321,6 +329,7 @@ export type Database = {
           channel_id?: string | null
           channel_title?: string | null
           created_at?: string
+          event_state?: Json
           id?: string
           input?: string
           last_poll_at?: string | null

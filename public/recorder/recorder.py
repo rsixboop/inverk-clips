@@ -11,7 +11,7 @@ Windows: start inverk-recorder.bat (downloaded from Sources). Others: INVERK_URL
 """
 import base64, calendar, csv, getpass, glob, json, os, shutil, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 
-VERSION = "2.3.2"
+VERSION = "2.4"
 SEG, PRE, POST = 10, 20, 15
 KEEP_S = int(os.environ.get("INVERK_KEEP_SECONDS", "900"))
 IS_WIN = os.name == "nt"
@@ -316,6 +316,9 @@ def window_frames(inp_args, seek, at):
     return out
 
 def validate(h, inp_args, seek, dur):
+    if h.get("trigger") == "vision":  # gameplay-event path: already confirmed by vision on successive frames; chat is not required
+        c = h.get("chatters") or 0
+        return True, "выбрано — " + (h.get("reason") or "игровое событие") + (f"; чат: {c} уникальных" if c else "; чат: тихо")
     if h.get("chatters") is None:  # server did not send the count: never treat it as 0 chatters
         raise NotYet("сервер не передал число зрителей (chatters) — повтор позже")
     chatters = int(h["chatters"])
@@ -615,6 +618,46 @@ def scene_loop():
                 api("frame", monitor_id=mid, frame_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime((a + b) / 2)), jpeg_base64=base64.b64encode(jpg).decode())
             except Exception as e: print("scene error", e, flush=True)
 
+# ---------- gameplay-event scan: successive buffered frames -> vision, independent of chat ----------
+EVENT_S = int(os.environ.get("INVERK_EVENT_SECONDS", "45"))
+def tiny(p, t):
+    """16x9 grayscale thumbnail bytes - a free local check that something actually changed on screen."""
+    return subprocess.run([FFMPEG, "-loglevel", "error", "-ss", f"{t:.2f}", "-i", p, "-frames:v", "1", "-vf", "scale=16:9,format=gray", "-f", "rawvideo", "pipe:1"],
+                          capture_output=True, timeout=30, creationflags=NOWIN).stdout
+
+def static(thumbs, thr=3.0):
+    """True when consecutive thumbnails barely differ (paused/menu/idle screen): skip the paid vision call."""
+    if len(thumbs) < 2 or any(len(x) != len(thumbs[0]) or not x for x in thumbs): return True
+    return max(sum(abs(a - b) for a, b in zip(x, y)) / len(x) for x, y in zip(thumbs, thumbs[1:])) < thr
+
+def event_scan(mid, segs):
+    """Three frames ~5 s apart from the two newest finished segments; returns server reply or None when skipped locally."""
+    if len(segs) < 3: return None
+    (p1, a1, b1), (p2, a2, b2) = segs[-3], segs[-2]
+    pts = [(p1, SEG / 2, a1 + SEG / 2), (p2, 0.5, a2 + 0.5), (p2, SEG - 1, a2 + SEG - 1)]
+    if static([tiny(p, t) for p, t, _ in pts]): return {"keep": False, "reason": "статичный кадр — без проверки"}
+    frames, at = [], []
+    for p, t, w in pts:
+        jpg = subprocess.run([FFMPEG, "-loglevel", "error", "-ss", f"{t:.2f}", "-i", p, "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "7", "-f", "image2", "pipe:1"],
+                             capture_output=True, timeout=30, creationflags=NOWIN).stdout
+        if jpg: frames.append(base64.b64encode(jpg).decode()); at.append(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(w)))
+    if len(frames) < 2: return None
+    return api("event_scan", monitor_id=mid, frames=frames, frame_times=at)
+
+def event_loop():
+    """Round-robin over channels; the server additionally caps scans per channel and per user across channels."""
+    last = {}
+    while True:
+        time.sleep(EVENT_S)
+        for mid, s in list(procs.items()):
+            try:
+                segs = all_segments(mid)
+                if not s.alive() or len(segs) < 3 or last.get(mid) == segs[-2][0]: continue
+                last[mid] = segs[-2][0]
+                r = event_scan(mid, segs)
+                if r and r.get("keep"): print("игровое событие", mid[:8], r.get("reason"), flush=True)
+            except Exception as e: print("event error", sanitize(str(e)), flush=True)
+
 def main():
     global FOLDER
     find_tools(); configure(); os.makedirs(BUF, exist_ok=True)
@@ -623,6 +666,7 @@ def main():
         FOLDER = fa; print(f"Папка записей (только чтение): {FOLDER}", flush=True); threading.Thread(target=folder_loop, daemon=True).start()
     print(f"Inverk рекордер {VERSION} запущен. Буфер: {BUF}. Окно можно свернуть; Ctrl+C — остановить.", flush=True)
     threading.Thread(target=scene_loop, daemon=True).start()
+    if "--no-events" not in sys.argv: threading.Thread(target=event_loop, daemon=True).start()
     try:
         while True:
             try:
