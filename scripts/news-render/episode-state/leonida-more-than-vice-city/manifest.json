@@ -58,7 +58,7 @@
     },
     {
       "narration": "Which part of Leonida are you exploring first?",
-      "background": "vc01",
+      "background": "vc11",
       "start": 22.5,
       "seconds": 3.18,
       "asset_id": null,
