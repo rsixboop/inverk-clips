@@ -12,6 +12,25 @@ export async function hashToken(t: string) {
 const POST_ROLL_WAIT_MS = 30_000;
 const MAX_ATTEMPTS = 3, CLAIM_MS = 15 * 60_000, MAX_BYTES = 80 * 1024 * 1024;
 
+/** PUT proxy for a claimed highlight's MP4. Authenticated by the unguessable per-claim UUID (single highlight, live claim only). */
+export async function handleUpload(request: Request): Promise<Response> {
+  const fail = (stage: string, status: number, msg: string) => Response.json({ error: `${stage}: ${msg}`, stage }, { status });
+  const u = new URL(request.url); const id = u.searchParams.get("upload") ?? "", claim = u.searchParams.get("claim") ?? "";
+  const uuid = /^[0-9a-f-]{36}$/i;
+  if (!uuid.test(id) || !uuid.test(claim)) return fail("upload_auth", 401, "bad claim");
+  const { supabaseAdmin: db } = await import("@/integrations/supabase/client.server");
+  const { data: h } = await db.from("live_highlights").select("id,user_id,output_path,claim_until").eq("id", id).eq("claim", claim).eq("status", "claimed").maybeSingle();
+  if (!h || !h.output_path) return fail("upload_claim", 409, "claim lost");
+  if (h.claim_until && Date.parse(h.claim_until) < Date.now()) return fail("upload_claim", 409, "claim expired");
+  const len = Number(request.headers.get("content-length") ?? 0);
+  if (len > MAX_BYTES) return fail("upload_size", 413, "file too large");
+  const buf = await request.arrayBuffer();
+  if (buf.byteLength < 1000 || buf.byteLength > MAX_BYTES) return fail("upload_size", 413, `bad size ${buf.byteLength}`);
+  const { error } = await db.storage.from("outputs").upload(h.output_path, buf, { contentType: "video/mp4", upsert: true });
+  if (error) return fail("upload_storage", 502, error.message.replace(/token=[^&\s]+/g, "token=***").slice(0, 200));
+  return Response.json({ ok: true, bytes: buf.byteLength });
+}
+
 export async function handleWorker(request: Request): Promise<Response> {
   const { supabaseAdmin: db } = await import("@/integrations/supabase/client.server");
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
@@ -71,8 +90,9 @@ export async function handleWorker(request: Request): Promise<Response> {
       const { data: ok } = await db.from("live_highlights").update({ status: "claimed", claim, claim_until: new Date(Date.now() + CLAIM_MS).toISOString(), attempts: h.attempts + 1, output_path: path })
         .eq("id", h.id).eq("status", "awaiting_media").select("id").maybeSingle();
       if (!ok) continue;
-      const { data: up } = await db.storage.from("outputs").createSignedUploadUrl(path, { upsert: true });
-      out.push({ ...h, claim, upload_url: up?.signedUrl });
+      // Upload goes through this app (same host the recorder already reaches): storage's edge rejects the
+      // default Python-urllib User-Agent with 403 "error code: 1010", which broke recorder <=2.3 uploads.
+      out.push({ ...h, claim, upload_url: `${new URL(request.url).origin}/api/public/live/worker?upload=${h.id}&claim=${claim}` });
     }
     return Response.json({ highlights: out });
   }

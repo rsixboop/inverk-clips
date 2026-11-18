@@ -11,7 +11,7 @@ Windows: start inverk-recorder.bat (downloaded from Sources). Others: INVERK_URL
 """
 import base64, calendar, csv, getpass, glob, json, os, shutil, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 
-VERSION = "2.3.1"
+VERSION = "2.3.2"
 SEG, PRE, POST = 10, 20, 15
 KEEP_S = int(os.environ.get("INVERK_KEEP_SECONDS", "900"))
 IS_WIN = os.name == "nt"
@@ -71,9 +71,11 @@ def find_tools():
     if not STREAMLINK: sys.exit("Не найден Streamlink. Установите: https://streamlink.github.io/install.html (или INVERK_STREAMLINK=путь\\streamlink.exe).")
     print(f"ffmpeg: {FFMPEG}\nstreamlink: {STREAMLINK}", flush=True)
 
+UA = "inverk-recorder/2.3.2"  # default Python-urllib UA is blocked (403 / error code 1010) by the storage edge
+_re_tok = __import__("re").compile(r"token=[^&\s\"']+")
 def api(action, **kw):
     req = urllib.request.Request(f"{APP}/api/public/live/worker", data=json.dumps({"action": action, **kw}).encode(),
-                                 headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}, method="POST")
+                                 headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json", "User-Agent": UA}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=60) as r: return json.load(r)
     except urllib.error.HTTPError as e: return {"error": f"{e.code} {e.read()[:200].decode('utf-8', 'replace')}"}
@@ -356,7 +358,13 @@ def process(h, mon):
         except subprocess.CalledProcessError as e:
             return api("fail", id=h["id"], claim=h["claim"], error="ffmpeg: " + (e.stderr or b"").decode("utf-8", "replace")[-250:], retryable=True)
         with open(out, "rb") as f: data = f.read()
-        urllib.request.urlopen(urllib.request.Request(h["upload_url"], data=data, method="PUT", headers={"Content-Type": "video/mp4", "x-upsert": "true"}), timeout=300).read()
+        try: urllib.request.urlopen(urllib.request.Request(h["upload_url"], data=data, method="PUT", headers={"Content-Type": "video/mp4", "x-upsert": "true", "User-Agent": UA}), timeout=300).read()
+        except urllib.error.HTTPError as e:
+            msg = f"upload: HTTP {e.code} " + _re_tok.sub("token=***", e.read()[:150].decode("utf-8", "replace")).strip()
+            print("момент", h["id"][:8], msg, flush=True); return api("fail", id=h["id"], claim=h["claim"], error=msg, retryable=True)
+        except Exception as e:
+            msg = "upload: network " + _re_tok.sub("token=***", str(e))[:150]
+            print("момент", h["id"][:8], msg, flush=True); return api("fail", id=h["id"], claim=h["claim"], error=msg, retryable=True)
         r = api("complete", id=h["id"], claim=h["claim"], note=note)
         if r.get("ok"): done.add(h["id"])
         print("клип", h["id"][:8], f"{len(data) / 1048576:.1f} МБ", "готов" if r.get("ok") else r, flush=True)
