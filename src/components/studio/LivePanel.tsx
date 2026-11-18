@@ -3,11 +3,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { TabCapture } from "@/components/studio/TabCapture";
 import { addMonitor, createWorkerToken, highlightUrl, liveStatus, monitorAction, tickLive } from "@/lib/live.functions";
 
 const ST: Record<string, string> = { resolving: "поиск эфира", live: "в эфире", offline: "не в эфире", blocked: "заблокировано", stopped: "остановлено" };
 const HS: Record<string, string> = { timestamp_only: "только таймкод", awaiting_media: "ждёт запись", claimed: "рекордер режет", done: "MP4 готов", failed: "ошибка", unavailable: "медиа недоступно" };
 const MODES = [["timestamp_only", "Только таймкоды"], ["recorder", "Рекордер (свой эфир)"], ["recording_url", "Своя запись/поток по ссылке"]] as const;
+// Worker timers are not throttled when this tab is in the background, so chat polling keeps going.
+function workerSleep(ms: number) { return new Promise<void>((r) => { const w = new Worker(URL.createObjectURL(new Blob([`setTimeout(()=>postMessage(0),${ms})`], { type: "text/javascript" }))); w.onmessage = () => { w.terminate(); r(); }; }); }
 const t = (s: string) => new Date(s).toLocaleTimeString("ru");
 
 export function LivePanel() {
@@ -15,12 +18,12 @@ export function LivePanel() {
   const add = useServerFn(addMonitor), act = useServerFn(monitorAction), tick = useServerFn(tickLive), mkToken = useServerFn(createWorkerToken), dl = useServerFn(highlightUrl), status = useServerFn(liveStatus);
   const [input, setInput] = useState(""); const [mode, setMode] = useState<string>("timestamp_only"); const [rec, setRec] = useState(""); const [rights, setRights] = useState(false); const [token, setToken] = useState("");
   const creds = useQuery({ queryKey: ["live-creds"], queryFn: () => status() }).data;
-  const monitors = useQuery({ queryKey: ["live-monitors"], queryFn: async () => (await supabase.from("live_monitors").select("*").order("created_at", { ascending: false })).data ?? [], refetchInterval: 5000 }).data ?? [];
-  const hl = useQuery({ queryKey: ["live-highlights"], queryFn: async () => (await supabase.from("live_highlights").select("*").order("start_at", { ascending: false }).limit(100)).data ?? [], refetchInterval: 5000 }).data ?? [];
+  const monitors = useQuery({ queryKey: ["live-monitors"], queryFn: async () => (await supabase.from("live_monitors").select("*").order("created_at", { ascending: false })).data ?? [], refetchInterval: 5000, refetchIntervalInBackground: true }).data ?? [];
+  const hl = useQuery({ queryKey: ["live-highlights"], queryFn: async () => (await supabase.from("live_highlights").select("*").order("start_at", { ascending: false }).limit(100)).data ?? [], refetchInterval: 5000, refetchIntervalInBackground: true }).data ?? [];
   const scenes = useQuery({ queryKey: ["live-scenes"], queryFn: async () => (await supabase.from("live_scene_checks").select("*").order("frame_at", { ascending: false }).limit(60)).data ?? [], refetchInterval: 10000 }).data ?? [];
   const active = monitors.some((m) => m.status !== "stopped");
   // Open tab drives polling (the minute cron does it on the published app).
-  useEffect(() => { if (!active) return; let on = true; const loop = async () => { while (on) { try { await tick(); } catch { /* shown via status */ } await new Promise((r) => setTimeout(r, 2000)); } }; loop(); return () => { on = false; }; }, [active, tick]);
+  useEffect(() => { if (!active) return; let on = true; const loop = async () => { while (on) { try { await tick(); } catch { /* shown via status */ } await workerSleep(2000); } }; loop(); return () => { on = false; }; }, [active, tick]);
   const refresh = () => { qc.invalidateQueries({ queryKey: ["live-monitors"] }); qc.invalidateQueries({ queryKey: ["live-highlights"] }); };
   async function submit() {
     try { await add({ data: { input, media_mode: mode as any, recording_url: rec || undefined, rights } }); setInput(""); refresh(); } catch (e) { toast.error((e as Error).message); }
@@ -50,6 +53,7 @@ export function LivePanel() {
             <div className="mt-1 font-mono text-[11px] text-muted-foreground">Экран: {(() => { const sc = scenes.filter((x) => x.monitor_id === m.id);
               if (!sc.length) return m.media_mode === "recorder" ? "ждёт кадров от рекордера" : "недоступно — кадры берутся только из записи рекордера";
               return sc.slice(0, 5).map((x) => `${t(x.frame_at)} ${x.activity === "unavailable" ? "недоступно" : `${x.game ?? "игра не определена"} · ${x.activity}`}${x.switched_from ? ` (смена с ${x.switched_from})` : ""}`).join(" ← "); })()}</div>
+            {m.platform === "youtube" && <TabCapture monitorId={m.id} />}
             {mine.map((h) => (
               <div key={h.id} className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px]">
                 <span>{t(h.start_at)}–{t(h.end_at)}</span><span>пик {t(h.peak_at)}{h.offset_s != null ? ` · ${Math.floor(Number(h.offset_s) / 60)}:${String(Math.floor(Number(h.offset_s) % 60)).padStart(2, "0")} от начала` : ""}</span>

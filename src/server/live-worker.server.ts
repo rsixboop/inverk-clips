@@ -56,21 +56,29 @@ export async function handleWorker(request: Request): Promise<Response> {
       await db.from("live_highlights").update({ status: retry ? "awaiting_media" : "unavailable", claim: null, claim_until: null, detail: String(body.error ?? "ошибка записи").slice(0, 300) }).eq("id", h.id);
       return Response.json({ ok: true, retry });
     }
+    const r = await finalizeHighlight(db, uid, h, "recorder");
+    if ("error" in r) return Response.json({ error: r.error }, { status: 400 });
+    return Response.json({ ok: true, job_id: r.job_id });
+  }
+  return Response.json({ error: "bad request" }, { status: 400 });
+}
+
+type Db = (typeof import("@/integrations/supabase/client.server"))["supabaseAdmin"];
+/** Verify an uploaded highlight MP4 (real video + original audio) and register one finished job per highlight. */
+export async function finalizeHighlight(db: Db, uid: string, h: any, source: "recorder" | "tab", durationHint?: number): Promise<{ job_id?: string | undefined } | { error: string }> {
     const { data: file, error } = await db.storage.from("outputs").download(h.output_path!);
-    if (error || !file) return Response.json({ error: "upload missing" }, { status: 400 });
-    if (file.size > MAX_BYTES) return Response.json({ error: "file too large" }, { status: 400 });
+    if (error || !file) return { error: "upload missing" };
+    if (file.size > MAX_BYTES) return { error: "file too large" };
     let info; try { info = inspectMp4(new Uint8Array(await file.arrayBuffer())); if (!info.video || !info.audio) throw new Error("нужны видео и оригинальный звук"); } catch (e) {
       await db.from("live_highlights").update({ status: "awaiting_media", claim: null, detail: `Неверный MP4: ${(e as Error).message}` }).eq("id", h.id);
-      return Response.json({ error: "invalid mp4" }, { status: 400 });
+      return { error: "invalid mp4" };
     }
     const { data: mon } = await db.from("live_monitors").select("platform,channel_title,input").eq("id", h.monitor_id).single();
     // Durable dedup: one finished job per highlight (idempotency key).
     const { data: job } = await db.from("jobs").upsert({ user_id: uid, idempotency_key: `live:${h.id}`, mode: "link", route: "live", audio_mode: "original", status: "completed", stage: "done",
-      prompt: `Live highlight · ${mon?.channel_title ?? mon?.input} · ${new Date(h.peak_at).toISOString()}`, target_seconds: Math.min(90, Math.max(10, Math.round(info.durationS ?? 30))),
+      prompt: `Live highlight · ${mon?.channel_title ?? mon?.input} · ${new Date(h.peak_at).toISOString()}`, target_seconds: Math.min(90, Math.max(10, Math.round(info.durationS || durationHint || 30))),
       output_path: h.output_path, output_mime: "video/mp4", output_bytes: file.size, finished_at: new Date().toISOString(), workflow_version: 2,
-      plan: { title: `Хайлайт эфира · ${mon?.channel_title ?? mon?.input}`, live: { highlight_id: h.id, platform: mon?.platform, peak_at: h.peak_at, score: h.score } } }, { onConflict: "user_id,idempotency_key" }).select("id").single();
-    await db.from("live_highlights").update({ status: "done", job_id: job?.id ?? null, claim: null, detail: `MP4 ${info.video.width}×${info.video.height}, ${info.durationS?.toFixed(1)} с` }).eq("id", h.id);
-    return Response.json({ ok: true, job_id: job?.id });
-  }
-  return Response.json({ error: "bad request" }, { status: 400 });
+      plan: { title: `Хайлайт эфира · ${mon?.channel_title ?? mon?.input}`, live: { highlight_id: h.id, platform: mon?.platform, peak_at: h.peak_at, score: h.score, source } } }, { onConflict: "user_id,idempotency_key" }).select("id").single();
+    await db.from("live_highlights").update({ status: "done", job_id: job?.id ?? null, claim: null, detail: `MP4 ${info.video.width}×${info.video.height}, ${(info.durationS || durationHint || 0).toFixed(1)} с${source === "tab" ? " · из вкладки Chrome" : ""}` }).eq("id", h.id);
+  return { job_id: job?.id };
 }
