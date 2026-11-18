@@ -1,0 +1,15 @@
+{
+  "status": "done",
+  "model": "fal-ai/imageutils/rembg",
+  "request_id": "01a1ec1a-e998-7e20-88c2-4c64447ced7c",
+  "result": {
+    "image": {
+      "url": "https://v3b.fal.media/files/b/0ab2e53f/SrUGne_PEzJQCgBc832fm.png",
+      "content_type": "image/png",
+      "file_name": null,
+      "file_size": null,
+      "width": 1024,
+      "height": 1024
+    }
+  }
+}

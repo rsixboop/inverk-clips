@@ -1,0 +1,98 @@
+{
+  "schema_version": 2,
+  "kind": "transparent_overlays",
+  "assets": [
+    {
+      "id": "1c4e037514d8683",
+      "semantic_key": "leonida-keys-island-marker",
+      "object": "one exquisitely polished sculptural tropical island-chain map pin, violet anodized titanium base, tiny turquoise ocean islets suspended inside an elegant metal locator ring, warm coral highlights, miniature palm tree silhouette INSIDE the object, no letters",
+      "style": "vice-neon",
+      "path": "public/overlay-library/vice-neon/1c4e037514d8683/overlay.png",
+      "status": "ready",
+      "max_uses": 5,
+      "uses": 1,
+      "episodes": [
+        "leonida-more-than-vice-city"
+      ],
+      "qc": {
+        "alpha": true,
+        "coverage": 0.192,
+        "size": [
+          443,
+          590
+        ],
+        "corner_alpha_sum": 0
+      },
+      "created_at": "2026-11-18"
+    },
+    {
+      "id": "0368fb7b288d7c3",
+      "semantic_key": "grassrivers-gator-emblem",
+      "object": "one premium stylized three-dimensional alligator head in a compact enamel and dark-metal badge, detailed jade-green scales, violet edge light, neon-teal water droplets embedded in the badge, elegant cutout object without any text",
+      "style": "vice-neon",
+      "path": "public/overlay-library/vice-neon/0368fb7b288d7c3/overlay.png",
+      "status": "ready",
+      "max_uses": 5,
+      "uses": 1,
+      "episodes": [
+        "leonida-more-than-vice-city"
+      ],
+      "qc": {
+        "alpha": true,
+        "coverage": 0.208,
+        "size": [
+          640,
+          364
+        ],
+        "corner_alpha_sum": 0
+      },
+      "created_at": "2026-11-18"
+    },
+    {
+      "id": "3d2ea3a23a0f5ad",
+      "semantic_key": "port-gellhorn-coastal-marker",
+      "object": "one weather-beaten but premium 3D coastal highway directional marker combined with a tiny detailed copper lighthouse miniature inside a dark purple enamel circular pin, golden coral metallic accents, NO lettering, isolated object",
+      "style": "vice-neon",
+      "path": "public/overlay-library/vice-neon/3d2ea3a23a0f5ad/overlay.png",
+      "status": "ready",
+      "max_uses": 5,
+      "uses": 1,
+      "episodes": [
+        "leonida-more-than-vice-city"
+      ],
+      "qc": {
+        "alpha": true,
+        "coverage": 0.202,
+        "size": [
+          514,
+          515
+        ],
+        "corner_alpha_sum": 0
+      },
+      "created_at": "2026-11-18"
+    },
+    {
+      "id": "bf68c6371522c13",
+      "semantic_key": "mount-kalaga-wild-crest",
+      "object": "one premium enamel 3D wilderness emblem shaped like layered mountain peaks and pine trees with tiny glowing purple compass halo, turquoise frost reflections, tactile sculpted metal and realistic foliage, absolutely no letters",
+      "style": "vice-neon",
+      "path": "public/overlay-library/vice-neon/bf68c6371522c13/overlay.png",
+      "status": "ready",
+      "max_uses": 5,
+      "uses": 1,
+      "episodes": [
+        "leonida-more-than-vice-city"
+      ],
+      "qc": {
+        "alpha": true,
+        "coverage": 0.2,
+        "size": [
+          639,
+          435
+        ],
+        "corner_alpha_sum": 0
+      },
+      "created_at": "2026-11-18"
+    }
+  ]
+}

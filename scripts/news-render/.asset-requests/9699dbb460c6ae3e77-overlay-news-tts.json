@@ -1,0 +1,13 @@
+{
+  "status": "done",
+  "model": "fal-ai/kokoro/american-english",
+  "request_id": "01a1ec19-028a-7a10-84d5-c5ebaf54ea52",
+  "result": {
+    "audio": {
+      "url": "https://v3b.fal.media/files/b/0ab2e539/cuO0GjBLg_HkxQfEmUrRk_ZD5B32M5.wav",
+      "content_type": "audio/wav",
+      "file_name": "cuO0GjBLg_HkxQfEmUrRk_ZD5B32M5.wav",
+      "file_size": null
+    }
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "episode": "leonida-more-than-vice-city",
+  "mode": "true_transparent_overlay",
+  "source": "https://www.rockstargames.com/VI/only-in-leonida",
+  "output": "public/gta6_leonida_overlay_news.mp4",
+  "duration": 25.68,
+  "estimated_asset_spend_usd": 0.28,
+  "scenes": [
+    {
+      "narration": "Think GTA Six is only Vice City? Rockstar has shown a whole state.",
+      "background": "vc16",
+      "start": 0.0,
+      "seconds": 4.88,
+      "asset_id": null,
+      "overlay_path": null,
+      "overlay_frames": 0,
+      "motion": null
+    },
+    {
+      "narration": "The Leonida Keys are an entire chain of tropical islands.",
+      "background": "lk01",
+      "start": 4.88,
+      "seconds": 3.8,
+      "asset_id": "1c4e037514d8683",
+      "overlay_path": "public/overlay-library/vice-neon/1c4e037514d8683/overlay.png",
+      "overlay_frames": 74,
+      "motion": "slide_in"
+    },
+    {
+      "narration": "Grassrivers takes you deep into swamp country, full of wildlife.",
+      "background": "gr02",
+      "start": 8.69,
+      "seconds": 4.43,
+      "asset_id": "0368fb7b288d7c3",
+      "overlay_path": "public/overlay-library/vice-neon/0368fb7b288d7c3/overlay.png",
+      "overlay_frames": 86,
+      "motion": "sway"
+    },
+    {
+      "narration": "Port Gellhorn is the rougher coast, miles from Vice City's nightlife.",
+      "background": "pg06",
+      "start": 13.12,
+      "seconds": 4.53,
+      "asset_id": "3d2ea3a23a0f5ad",
+      "overlay_path": "public/overlay-library/vice-neon/3d2ea3a23a0f5ad/overlay.png",
+      "overlay_frames": 88,
+      "motion": "rise"
+    },
+    {
+      "narration": "And Mount Kalaga trades neon streets for wild forest and open country.",
+      "background": "mk02",
+      "start": 17.64,
+      "seconds": 4.86,
+      "asset_id": "bf68c6371522c13",
+      "overlay_path": "public/overlay-library/vice-neon/bf68c6371522c13/overlay.png",
+      "overlay_frames": 95,
+      "motion": "pop"
+    },
+    {
+      "narration": "Which part of Leonida are you exploring first?",
+      "background": "vc14",
+      "start": 22.5,
+      "seconds": 3.18,
+      "asset_id": null,
+      "overlay_path": null,
+      "overlay_frames": 0,
+      "motion": null
+    }
+  ]
+}
