@@ -12,6 +12,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from auto_assets import ROOT, HERE, queue, download, save
 from overlay_assets import ensure_overlays
+from semantic_overlays import validate_cues, load_states, composite
 SR, FPS, W, H = 48000, 30, 720, 1280
 MAX_SCENES, ALLOWED_ANIMATIONS = 8, {"slide_in","rise","float","pop","sway","sweep"}
 
@@ -58,7 +59,7 @@ def validate_episode(episode):
     if not episode.get("source_url","").startswith("https://www.rockstargames.com/VI/"):
         raise ValueError("This episode requires official GTA VI source")
     scenes=episode["scenes"]
-    if not 5<=len(scenes)<=MAX_SCENES:raise ValueError("5–8 narration scenes required")
+    if not 1<=len(scenes)<=MAX_SCENES:raise ValueError("1–8 narration scenes required")
     overlay_count=0
     for s in scenes:
         name=s["background"]
@@ -73,7 +74,7 @@ def validate_episode(episode):
             if not isinstance(ov.get("anchor"),list) or len(ov["anchor"])!=2 or not all(0.1<=v<=0.9 for v in ov["anchor"]):
                 raise ValueError("overlay anchor must be normalized (0.1..0.9)")
             if not 0.24<=float(ov.get("width",0.40))<=0.5:raise ValueError("overlay size")
-    if overlay_count<4:raise ValueError("Must have four distinct transparent overlay instances")
+    # Objects are optional; narration decides whether any are useful.
 
 def source_canvas(image: Image.Image, phase: float) -> Image.Image:
     # Only background screenshot gets the slow cinematic Ken Burns crop.
@@ -140,6 +141,11 @@ def make_episode(path: str):
     validate_episode(ep)
     work=HERE/"episode-state"/ep["id"];work.mkdir(parents=True,exist_ok=True)
     durations,starts,total=voice_and_times(ep,work)
+    cues=validate_cues(ep.get("overlay_cues",[]),total)
+    for cue in cues:
+        if cue["speech"] not in " ".join(s["narration"] for s in ep["scenes"]):
+            raise ValueError("Cue speech anchor absent from narration")
+    states=load_states(cues,ROOT/"public")
     requests=[s["overlay"] for s in ep["scenes"] if s.get("overlay")]
     assets,estimated=ensure_overlays(requests,ep.get("style","vice-neon"),
                         ep["id"],float(ep.get("max_asset_spend_usd",3.0)))
@@ -181,13 +187,14 @@ def make_episode(path: str):
         if asset:
             bg=draw_overlay(bg,imgs[asset["id"]],s["overlay"],progress)
             if .20<progress<.85:seen[shot]+=1
+        bg=composite(bg,cues,states,frame/FPS)
         try:proc.stdin.write(bg.tobytes())
         except BrokenPipeError:raise RuntimeError("ffmpeg overlay compositor exited early")
         if frame%(FPS*5)==0:print("COMPOSITED",round(frame/FPS,1),"/",round(total,1),flush=True)
     proc.stdin.close()
     if proc.wait()!=0:raise RuntimeError("FFmpeg export failed")
     used=[i for i,n in enumerate(seen) if n>12]
-    if len(used)<4:raise RuntimeError(f"Only {len(used)} animated overlays rendered")
+    if any(mapped[i] and seen[i]==0 for i in range(len(mapped))):raise RuntimeError("Requested overlay was never visible")
     probe=json.loads(run(["ffprobe","-v","error","-show_format","-of","json",str(out)],
                           capture_output=True,text=True).stdout)
     actual=float(probe["format"]["duration"])
@@ -195,6 +202,7 @@ def make_episode(path: str):
     if out.stat().st_size>=9_000_000:raise RuntimeError("Final video exceeds Git size limit")
     run(["ffmpeg","-v","error","-i",str(out),"-f","null","-"],capture_output=True)
     manifest={"episode":ep["id"],"mode":"true_transparent_overlay","source":ep["source_url"],
+              "overlay_cues":cues,
               "output":str(out.relative_to(ROOT)),"duration":round(total,2),
               "estimated_asset_spend_usd":estimated,
               "scenes":[{"narration":s["narration"],"background":s["background"],

@@ -1,4 +1,5 @@
 # Inverk Clips roadmap
+- [x] Optional semantic cues in Python and Studio generation/preview/export; verify zero/one and playable 212 GB example.
 - [x] Data model, auth, private storage, RLS
 - [x] Compose: grounded Tavily research, permitted library media, queued Atlas TTS and fal assembly
 - [x] Clip: uploaded/direct media, timed transcription, candidate moments and queued vertical processing

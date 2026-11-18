@@ -6,6 +6,8 @@ import { AppShell } from "@/components/studio/AppShell";
 import { CATALOG, CLIPS, findAsset, findClip, isCatalogUrl, mediaUrl, pickAssets } from "@/lib/news-catalog";
 import { findGtaNews, findNewswire, scriptFromArticle } from "@/lib/news-script.functions";
 import { planTimeline } from "@/lib/news-timeline";
+import { drawOverlayCues, loadOverlayImages, validateOverlayCues } from "@/lib/news-overlays";
+import { Button } from "@/components/ui/button";
 import { MEDIA_LIBRARY, NEWS_SOURCE, PILOT, pilotValid, totalSeconds, type Shot } from "@/lib/news-pilot";
 
 export const Route = createFileRoute("/news")({
@@ -40,7 +42,7 @@ function News() {
   const findFn = useServerFn(findNewswire), scriptFn = useServerFn(scriptFromArticle);
   const search = async () => { setNw({ busy: true, msg: "Ищу на Rockstar Newswire…" }); try { const r = await findFn(); setFound(r.items); setNw({ busy: false, msg: r.error }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
   const makeScript = async () => { setNw({ busy: true, msg: "Читаю статью и пишу сценарий…" }); try { const r = await scriptFn({ data: { url: source } });
-    const ns: Shot[] = r.shots.map((x) => ({ text: x.text, seconds: x.seconds, material: `Факт: «${x.fact}»`, caption: x.caption, fact: x.fact, brief: x.brief, role: x.role })); setShots(ns); setAngle(r.angle); setApproved(false); setVoice(null);
+    const ns: Shot[] = r.shots.map((x) => ({ text: x.text, seconds: x.seconds, material: `Факт: «${x.fact}»`, caption: x.caption, fact: x.fact, brief: x.brief, role: x.role, overlay_cues: x.overlay_cues ?? [] })); setShots(ns); setAngle(r.angle); setApproved(false); setVoice(null);
     setMedia((m) => pickAssets(ns).map((id, k) => { const a = ns[k]!.role === "evidence" ? undefined : findAsset(id); return a ? { url: mediaUrl(a.id), video: false, name: `Rockstar: ${a.title}`, state: "loading" } : null; }));
     setNw({ busy: false, msg: "Сценарий готов. Проверьте и утвердите перед озвучкой." }); } catch (e) { setNw({ busy: false, msg: (e as Error).message }); } };
   const [allowed, setAllowed] = useState(false);
@@ -50,6 +52,7 @@ function News() {
   const audio = useRef<{ el: HTMLAudioElement; ctx: AudioContext; dest: MediaStreamAudioDestinationNode } | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const els = useRef<(HTMLImageElement | HTMLVideoElement | null)[]>([]);
+  const overlayImages = useRef(new Map<string, HTMLImageElement>());
   const [tts, setTts] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: "" });
   const submitFn = useServerFn(submitNewsVoice), pollFn = useServerFn(pollNewsVoice);
   async function genVoice() {
@@ -100,7 +103,7 @@ function News() {
   const pickCatalog = (i: number, id: string) => { const a = findAsset(id); if (a) setMedia((m) => m.map((x, k) => (k === i ? { url: mediaUrl(a.id), video: false, name: `Rockstar: ${a.title}`, state: "loading" } : x))); };
 
   const pickClip = (i: number, id: string) => { const c = findClip(id); if (c) setMedia((m) => m.map((x, k) => (k === i ? { url: mediaUrl(c.id), video: true, name: `Rockstar видео: ${c.title}`, state: "loading" } : x))); };
-  function draw(i: number, progress = 0, cut = 0) {
+  function draw(i: number, progress = 0, cut = 0, speechTime = 0) {
     const ctx = canvas.current!.getContext("2d")!, el = els.current[i];
     ctx.fillStyle = "#111"; ctx.fillRect(0, 0, W, H);
     if (el) { const sw = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth, sh = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
@@ -117,6 +120,7 @@ function News() {
       ctx.textAlign = "center"; ctx.font = "32px sans-serif"; ctx.fillStyle = "#fff";
       ctx.fillText("Source: Rockstar Newswire", W / 2, H - 140);
     }
+    drawOverlayCues(ctx, shots[i]?.overlay_cues ?? [], overlayImages.current, speechTime);
   }
 
   function voiceNode() {
@@ -145,6 +149,12 @@ function News() {
     setOut(null);
     if (record && plan.errors.length) throw new Error(plan.errors.join("; "));
     setStatus("Жду декодирования всех материалов…"); await decodeAll(record);
+    const cues = shots.flatMap((s,i) => {
+      const list = validateOverlayCues(s.overlay_cues, plan.seconds[i] ?? s.seconds);
+      if (list.some(c => !s.text.includes(c.speech))) throw new Error(`Шот ${i+1}: фраза оверлея отсутствует в озвучке`);
+      return list;
+    });
+    overlayImages.current = await loadOverlayImages(cues);
     draw(0, 0); // first frame is on the canvas before recording/audio start
     const a = voiceNode();
     if (a) { await a.ctx.resume(); a.el.currentTime = 0; }
@@ -170,7 +180,7 @@ function News() {
         const to = segmentStart + (beat.end - cuts[0]!.start) * 1000;
         while (performance.now() < to) {
           const progress = Math.max(0, Math.min(1, (performance.now() - from) / (beat.seconds * 1000)));
-          draw(i, progress, beat.cut);
+          draw(i, progress, beat.cut, a ? Math.max(0,a.el.currentTime - (cuts[0]?.start ?? 0)) : (performance.now()-segmentStart)/1000);
           await new Promise((r) => requestAnimationFrame(r));
         }
       }
@@ -213,6 +223,11 @@ function News() {
               <input type="number" min={2} max={10} step={0.5} value={s.seconds} onChange={(e) => upd(i, { seconds: Number(e.target.value) })} className="h-7 w-16 rounded border border-input bg-muted px-1 text-xs" /> с</div>
             <textarea value={s.text} onChange={(e) => upd(i, { text: e.target.value })} rows={2} className="w-full rounded border border-input bg-muted p-2 text-xs" />
             <input value={s.caption ?? ""} placeholder="Экранная подпись (пусто = без заголовка)" onChange={(e) => upd(i, { caption: e.target.value })} className="w-full rounded border border-input bg-muted p-1 text-xs" />
+            <details className="text-xs">
+              <summary>Смысловые объекты · {s.overlay_cues?.length ?? 0}</summary>
+              {(s.overlay_cues ?? []).map((c,k) => <div key={k} className="py-1"><b>{c.purpose}</b> · «{c.speech}» · {c.start} → {c.action} → {c.after} → {c.end} с <Button size="sm" variant="ghost" onClick={() => upd(i,{overlay_cues: (s.overlay_cues ?? []).filter((_,j)=>j!==k)})}>Удалить</Button></div>)}
+              <input aria-label={`Смысловые объекты шота ${i+1}`} type="file" accept="application/json" onChange={async e => { const f=e.target.files?.[0]; if (!f) return; try { const input=JSON.parse(await f.text()); upd(i,{overlay_cues:validateOverlayCues(input,plan.seconds[i] ?? s.seconds)}); } catch(error) { setStatus((error as Error).message); } }} />
+            </details>
             <div className="text-xs text-muted-foreground">Материал: {s.material}</div>
             {s.brief && <div className="text-xs text-muted-foreground">Визуал: {s.brief} · <b>{s.role === "evidence" ? "доказательство" : "иллюстрация (не доказательство)"}</b></div>}
             <input type="file" accept="video/mp4,image/*" className="text-xs" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return;
@@ -233,6 +248,11 @@ function News() {
           <div className="text-muted-foreground">{voice ? `Загружено: ${voice.name}` : "Озвучка не загружена — экспорт будет без звука."}</div></div>
       </div>
       <div className="panel p-3 space-y-2">
+        <div className="border-b border-border pb-2 space-y-1">
+          <b className="text-xs">212 GB · загрузка ≠ ранний доступ</b>
+          <video aria-label="Semantic download lock example" controls playsInline preload="metadata" src="/gta6_212gb_semantic.mp4" className="w-full rounded bg-muted" />
+          <a href="/gta6_212gb_semantic.mp4" download className="block text-xs text-primary underline">Скачать MP4 · смысловой объект</a>
+        </div>
         <div className="rounded-md border border-primary/40 p-2 space-y-1">
           <b className="text-xs">Новый выпуск · Леонида за пределами Vice City · 4 прозрачных AI-ассета</b>
           <video controls playsInline preload="metadata" src="/gta6_leonida_overlay_news.mp4" className="w-full rounded bg-muted" />

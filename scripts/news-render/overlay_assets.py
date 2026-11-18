@@ -34,7 +34,7 @@ def visual_prompt(request: dict, style: dict) -> str:
         "PURE SIMPLE SOLID PALE GRAY BACKGROUND, no scene, landscape, palm trees, "
         "people, floor, frame, border, titles, typography, labels, icons in corners, "
         "logo or watermark, extra objects, background shadows or screenshots. "
-        "Premium game editorial sticker / animated motion graphic object. "
+        "Premium physically illustrated editorial object, NOT a sticker or UI box. "
         "No text of any kind."
     )
 
@@ -80,6 +80,8 @@ def alpha_qa(path: Path, normalize: bool = True) -> dict:
 
 def ensure_overlays(requests: list[dict], style_id: str, episode_id: str,
                     budget_usd: float = 3.0) -> tuple[list[dict], float]:
+    if not requests:
+        return [], 0.0
     if len(requests) > MAX_OVERLAYS:
         raise ValueError(f"max {MAX_OVERLAYS} overlays")
     presets = styles()

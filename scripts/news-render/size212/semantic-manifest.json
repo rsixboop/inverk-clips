@@ -1,0 +1,32 @@
+{
+  "source": "public/gta6_212gb_news.mp4",
+  "output": "public/gta6_212gb_semantic.mp4",
+  "frames": 754,
+  "fps": 30.0,
+  "audio": "original AAC stream copied, no TTS or remix",
+  "overlay_cues": [
+    {
+      "purpose": "Downloaded game stays locked until release; download is not early access",
+      "speech": "But downloading early doesn't mean playing early.",
+      "start": 9.75,
+      "action": 10.0,
+      "after": 14.5,
+      "end": 17.2,
+      "before": "/overlay-library/clean-tech/300b6a9bc7ed8b4/before.png",
+      "active": "/overlay-library/clean-tech/300b6a9bc7ed8b4/active.png",
+      "result": "/overlay-library/clean-tech/300b6a9bc7ed8b4/result.png",
+      "box": [
+        0,
+        0.86,
+        1,
+        0.14
+      ],
+      "fill_region": [
+        0.108,
+        0.455,
+        0.85,
+        0.67
+      ]
+    }
+  ]
+}

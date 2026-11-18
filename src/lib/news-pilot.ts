@@ -1,7 +1,8 @@
 // "GTA VI: 30 FPS?" pilot. Every claim quotes the official Rockstar Newswire article; no invented scenes.
+import type { OverlayCue } from "./news-overlays";
 export const NEWS_SOURCE = "https://www.rockstargames.com/newswire/article/89834o94713o21/pre-load-grand-theft-auto-vi-now";
 export const MEDIA_LIBRARY = "https://www.rockstargames.com/VI/media";
-export type Shot = { text: string; seconds: number; material: string; caption?: string; fact?: string; brief?: string; role?: "evidence" | "illustration" };
+export type Shot = { text: string; seconds: number; material: string; caption?: string; fact?: string; brief?: string; role?: "evidence" | "illustration"; overlay_cues?: OverlayCue[] };
 export const PILOT: Shot[] = [
   { text: "GTA VI at 30 FPS — even on PS5 Pro?", seconds: 4, material: "Official GTA VI key art or a trailer still (Rockstar media library)" },
   { text: "Rockstar confirmed it: GTA VI targets thirty frames per second on consoles.", seconds: 6, material: "Official screenshot of Leonida (wide city or coast view)" },
