@@ -18,7 +18,7 @@ export const scriptFromArticle = createServerFn({ method: "POST" }).middleware([
   .inputValidator((d) => z.object({ url: z.string().max(300).refine(isNewswireUrl, "Только https://www.rockstargames.com/newswire/article/…"),language:z.enum(["EN","RU","UK"]).default("EN") }).parse(d))
   .handler(async ({ data,context }) => {
     const {data:cache}=await context.supabase.from("news_overlay_assets").select("asset_key,state").eq("user_id",context.userId).limit(40);
-    const catalog=(cache ?? []).flatMap(row=>{const state=row.state as {step?:number;intent?:unknown};return state.step===6?[{key:row.asset_key,intent:state.intent}]:[];});
+    const catalog=(cache ?? []).flatMap(row=>{const state=row.state as {step?:number;intent?:unknown};return (state.step===6||(state as {version?:number}).version===2&&state.step===4)?[{key:row.asset_key,intent:state.intent}]:[];});
     const { buildScriptFromArticle } = await import("@/lib/news-script.server"); return buildScriptFromArticle(data.url,data.language,[...builtinOverlayAssets,...catalog]);
   });
 

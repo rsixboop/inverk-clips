@@ -5,6 +5,8 @@ export type OverlayCue = {
   /** "up" reveals the active state bottom→top (preload fill); default left→right. */
   fill_dir?: "right" | "up";
   /** Separate RGBA motion layers on the cue box; keys [secondsFromAfter, dx, dy, scale, alpha], box-relative. */
+  /** fal-generated alpha WebM (object's own motion), played from `action` at native speed, last frame held. */
+  motion?: string;
   layers?: { src: string; keys: [number,number,number,number,number][]; ease?: "settle" | "linear" }[];
 };
 const CASE_LOCK = "/overlay-library/clean-tech/case-lock";
@@ -45,6 +47,15 @@ export function isOverlayImageUrl(path: unknown, storageOrigin = import.meta.env
       /^\/storage\/v1\/object\/sign\/outputs\/[\w/-]+\.png$/.test(url.pathname) && Boolean(url.searchParams.get("token"));
   } catch { return false; }
 }
+export function isOverlayMotionUrl(path: unknown, storageOrigin = import.meta.env['VITE_SUPABASE_URL']): path is string {
+  if (typeof path !== "string") return false;
+  if (/^\/overlay-library\/[\w/.-]+\.webm$/.test(path) && !path.includes("..")) return true;
+  try {
+    const url = new URL(path), origin = new URL(storageOrigin);
+    return url.protocol === "https:" && url.origin === origin.origin && !url.username && !url.password &&
+      /^\/storage\/v1\/object\/sign\/outputs\/[\w/-]+\.webm$/.test(url.pathname) && Boolean(url.searchParams.get("token"));
+  } catch { return false; }
+}
 export function validateOverlayCues(input: unknown, duration: number, storageOrigin = import.meta.env['VITE_SUPABASE_URL']): OverlayCue[] {
   if (input == null) return [];
   if (!Array.isArray(input)) throw new Error("Оверлеи должны быть списком");
@@ -54,6 +65,7 @@ export function validateOverlayCues(input: unknown, duration: number, storageOri
     if (![c.before,c.active,c.result].every((p) => isOverlayImageUrl(p, storageOrigin))) throw new Error("Нужны три PNG из библиотеки или защищённого хранилища");
     const b = c.box;
     if (!Array.isArray(b) || b.length !== 4 || !b.every((n) => Number.isFinite(n) && n >= 0 && n <= 1) || b[2] <= 0 || b[3] <= 0 || b[0]+b[2]>1 || b[1]+b[3]>1) throw new Error("Объект должен помещаться в кадр");
+    if (c.motion !== undefined && !isOverlayMotionUrl(c.motion, storageOrigin)) throw new Error("Движение: только WebM с прозрачностью из библиотеки или защищённого хранилища");
     if(c.fill_region && (!Array.isArray(c.fill_region) || c.fill_region.length!==4 || !c.fill_region.every((v:number)=>Number.isFinite(v)&&v>=0&&v<=1) || c.fill_region[0]>=c.fill_region[2] || c.fill_region[1]>=c.fill_region[3])) throw new Error("Некорректная область заполнения");
     if (c.fill_dir !== undefined && c.fill_dir !== "right" && c.fill_dir !== "up") throw new Error("Некорректное направление заполнения");
     if (c.layers !== undefined) {
@@ -86,11 +98,37 @@ export async function loadOverlayImages(cues: OverlayCue[]) {
   }));
   return images;
 }
-export function drawOverlayCues(ctx: CanvasRenderingContext2D, cues: OverlayCue[], images: Map<string, HTMLImageElement>, time: number) {
+/** Loads alpha WebM motions and proves real transparency on a decoded frame. */
+export async function loadOverlayMotions(cues: OverlayCue[]) {
+  const videos = new Map<string, HTMLVideoElement>();
+  await Promise.all([...new Set(cues.flatMap(c => c.motion ? [c.motion] : []))].map(async src => {
+    const v = document.createElement("video"); v.crossOrigin = "anonymous"; v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = src;
+    await new Promise<void>((ok, bad) => { v.oncanplaythrough = () => ok(); v.onerror = () => bad(new Error("Видео объекта не загрузилось")); setTimeout(() => bad(new Error("Видео объекта: таймаут")), 20000); });
+    v.currentTime = Math.min(1, v.duration / 2); await new Promise(r => { v.onseeked = r; });
+    const canvas = document.createElement("canvas"); canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true }); if (!ctx) throw new Error("Canvas unavailable");
+    ctx.drawImage(v, 0, 0, 64, 64); const px = ctx.getImageData(0, 0, 64, 64).data;
+    if (!px.some((a, i) => i % 4 === 3 && a < 16) || !px.some((a, i) => i % 4 === 3 && a > 200)) throw new Error("Видео объекта без настоящей прозрачности");
+    v.currentTime = 0; videos.set(src, v);
+  }));
+  return videos;
+}
+/** Keeps a motion element locked to the timeline: native speed from `action`, holds the final frame. */
+export function syncMotion(v: HTMLVideoElement, c: OverlayCue, time: number) {
+  const want = Math.max(0, Math.min(v.duration - 0.04, time - c.action));
+  const running = time >= c.action && time - c.action < v.duration - 0.05 && time < c.end;
+  if (running) { if (v.paused) void v.play().catch(() => {}); if (Math.abs(v.currentTime - want) > 0.12) v.currentTime = want; }
+  else { if (!v.paused) v.pause(); if (Math.abs(v.currentTime - want) > 0.05) v.currentTime = want; }
+}
+export function drawOverlayCues(ctx: CanvasRenderingContext2D, cues: OverlayCue[], images: Map<string, HTMLImageElement>, time: number, motions?: Map<string, HTMLVideoElement>) {
   for (const c of cues) {
-    const state = overlayState(c,time); if (!state) continue;
+    const state = overlayState(c,time);
+    const v = c.motion ? motions?.get(c.motion) : undefined;
+    if (v) syncMotion(v, c, time);
+    if (!state) continue;
     const [bx,by,bw,bh] = c.box;
     const x=bx*ctx.canvas.width, y=by*ctx.canvas.height, w=bw*ctx.canvas.width, h=bh*ctx.canvas.height;
+    if (v && state.name !== "before" && v.readyState >= 2) { ctx.drawImage(v, x, y, w, h); continue; }
     const image=images.get(c[state.name]); if (!image) throw new Error("Объект не загружен");
     if (state.name === "active" && c.fill_region) {
       const before=images.get(c.before); if (before) ctx.drawImage(before,x,y,w,h);

@@ -23,7 +23,8 @@ export function validateScript(out: unknown, article: string): ScriptResult {
     // A missing caption is intentional: showing the visual without a teaser is often better.
     if (caption.length > 48) throw new Error(`Шот ${i + 1}: слишком длинная подпись`);
     if (!brief || brief.length > 200) throw new Error(`Шот ${i + 1}: нет visual brief`);
-    if (s?.role !== "evidence" && s?.role !== "illustration") throw new Error(`Шот ${i + 1}: роль должна быть evidence/illustration`);
+    // An unknown role is downgraded to illustration: the conservative choice never claims evidence.
+    if (s && s.role !== "evidence" && s.role !== "illustration") s.role = "illustration";
     if (fact.length < 12 || !a.includes(norm(fact))) throw new Error(`Шот ${i + 1}: факт не найден в статье — сценарий отклонён`);
     const seconds = [4, 6, 6, 5][i] ?? 5;
     let overlay_cues:OverlayCue[]=[];

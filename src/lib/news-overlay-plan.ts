@@ -37,12 +37,14 @@ export function matchSpeechPhrase(phrase: string, words: SpeechWord[]) {
 }
 export function timeOverlayIntent(intent: OverlayIntent, words: SpeechWord[], duration: number) {
   const phrase=matchSpeechPhrase(intent.phrase,words), action=matchSpeechPhrase(intent.action_phrase,words), after=matchSpeechPhrase(intent.after_phrase,words);
-  if(!phrase || !action || !after) return null;
-  const start=phrase.start, act=action.start, done=after.start, end=Math.min(duration,phrase.end+0.15);
+  if(!action || !after) return null;
+  // Shot cuts are proportional, so speech may begin slightly before the cut: clamp to the shot start.
+  // If the long phrase was transcribed differently, the uniquely matched action/after words still anchor timing.
+  const start=Math.max(0,phrase ? phrase.start : action.start-0.6), act=action.start, done=after.start, end=Math.min(duration,(phrase?.end ?? after.end)+0.15);
   if(!(0<=start && start<act && act<done && done<end)) return null;
   return {purpose:intent.purpose,speech:intent.phrase,start,action:act,after:done,end,box:intent.box};
 }
-export const OVERLAY_ASSET_RESERVATION_USD=0.30;
+export const OVERLAY_ASSET_RESERVATION_USD=0.60;
 export const OVERLAY_ALIGN_RESERVATION_USD=0.05;
 export const OVERLAY_BATCH_CAP_USD=1;
 export function canReserveOverlay(reserved:number,cost:number) { return cost>=0 && reserved+cost<=OVERLAY_BATCH_CAP_USD; }

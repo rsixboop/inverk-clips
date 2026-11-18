@@ -1,4 +1,5 @@
 # Inverk Clips roadmap
+- [x] Live new-topic short (Justice score) through normal Studio: fal image-to-video + alpha matting motion objects, exported public/gta6_new_generator_short.mp4
 - [x] Focused fresh paper-map positive path: prior 422 was completed no_media_generated, simplified object prompt succeeded, signed PNGs loaded/imported/exported in normal UI with speech alignment; no replay, $1 reservation barrier retained.
 - [x] Replace regex cues with multilingual planner intents, durable capped fal state assets, phrase timing, and unrelated/no-cue flow verification (live new asset returned no_media_generated; successful new-state visual verification remains blocked by provider result).
 - [x] Optional semantic cues in Python and Studio generation/preview/export; verify zero/one and playable 212 GB example.

@@ -6,7 +6,7 @@ import { AppShell } from "@/components/studio/AppShell";
 import { CATALOG, CLIPS, findAsset, findClip, isCatalogUrl, mediaUrl, pickAssets } from "@/lib/news-catalog";
 import { findGtaNews, findNewswire, scriptFromArticle } from "@/lib/news-script.functions";
 import { planTimeline } from "@/lib/news-timeline";
-import { BUILTIN_CASE_LOCK_KEY, drawOverlayCues, loadOverlayImages, validateOverlayCues, withBuiltinCaseLock } from "@/lib/news-overlays";
+import { BUILTIN_CASE_LOCK_KEY, drawOverlayCues, loadOverlayImages, loadOverlayMotions, validateOverlayCues, withBuiltinCaseLock } from "@/lib/news-overlays";
 import { Button } from "@/components/ui/button";
 import { alignNewsSpeech, resolveNewsOverlay } from "@/lib/news-overlay.functions";
 import { timeOverlayIntent, type SpeechWord } from "@/lib/news-overlay-plan";
@@ -61,6 +61,7 @@ function News() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const els = useRef<(HTMLImageElement | HTMLVideoElement | null)[]>([]);
   const overlayImages = useRef(new Map<string, HTMLImageElement>());
+  const overlayMotions = useRef(new Map<string, HTMLVideoElement>());
   const [tts, setTts] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: "" });
   const submitFn = useServerFn(submitNewsVoice), pollFn = useServerFn(pollNewsVoice);
   async function genVoice() {
@@ -116,7 +117,8 @@ function News() {
       for(let i=0;i<shots.length;i++){
         const s=shots[i];if(!s)continue;
         const offset=plan.seconds.slice(0,i).reduce((a,b)=>a+b,0),length=plan.seconds[i] ?? s.seconds;
-        const localWords=words.map(w=>({...w,start:w.start-offset,end:w.end-offset}));
+        // Only this shot's speech (small margin for proportional cuts): words repeated in other shots must not make the phrase ambiguous.
+        const localWords=words.map(w=>({...w,start:w.start-offset,end:w.end-offset})).filter(w=>w.end>-1.2 && w.start<length+0.6);
         const cues=[...(s.overlay_cues ?? [])];
         for(const intent of s.overlay_intents ?? []){
           const timed=timeOverlayIntent(intent,localWords,length);
@@ -125,7 +127,9 @@ function News() {
           for(let attempt=0;response.status==="pending" && attempt<150;attempt++) {setOverlayMessage(response.message);await new Promise(r=>setTimeout(r,2000));response=await overlayFn({data:{batch,narration:s.text,intent}});}
           if(response.status==="done"){
             const [before,active,result]=response.paths;
-            const cue=before&&active&&result?{...timed,before,active,result}:null;
+            const motion="motion" in response?response.motion:undefined;
+            // A fal motion clip (3 s) plays at native speed from the action word; keep it on screen until it ends.
+            const cue=before&&active&&result?{...timed,before,active,result,...(motion?{motion,end:Math.min(length,Math.max(timed.end,timed.action+3.2))}:{})}:null;
             const finalCue=cue&&response.key===BUILTIN_CASE_LOCK_KEY?withBuiltinCaseLock(cue,length):cue;
             if(!finalCue)messages.push(`Шот ${i+1}: мало времени для анимации замка`);
             else if(!cues.some(c=>c.speech===timed.speech))cues.push(finalCue);
@@ -172,7 +176,7 @@ function News() {
       ctx.textAlign = "center"; ctx.font = "32px sans-serif"; ctx.fillStyle = "#fff";
       ctx.fillText("Source: Rockstar Newswire", W / 2, H - 140);
     }
-    drawOverlayCues(ctx, preparedCues.current[i] ?? [], overlayImages.current, speechTime);
+    drawOverlayCues(ctx, preparedCues.current[i] ?? [], overlayImages.current, speechTime, overlayMotions.current);
   }
 
   function voiceNode() {
@@ -201,14 +205,15 @@ function News() {
     setOut(null);
     if (record && plan.errors.length) throw new Error(plan.errors.join("; "));
     setStatus("Жду декодирования всех материалов…"); await decodeAll(record);
-    preparedCues.current=[];overlayImages.current=new Map();
+    preparedCues.current=[];overlayImages.current=new Map();overlayMotions.current=new Map();
     for(const [i,s] of shots.entries()){
       const usable:NonNullable<Shot["overlay_cues"]>=[];
       for(const cue of s.overlay_cues ?? []){
         try{
           if(!s.text.includes(cue.speech))continue;
           validateOverlayCues([cue],plan.seconds[i] ?? s.seconds);
-          const images=await loadOverlayImages([cue]);images.forEach((image,path)=>overlayImages.current.set(path,image));usable.push(cue);
+          const images=await loadOverlayImages([cue]);images.forEach((image,path)=>overlayImages.current.set(path,image));
+          const motions=await loadOverlayMotions([cue]);motions.forEach((v,path)=>overlayMotions.current.set(path,v));usable.push(cue);
         }catch{setOverlayMessage("Непригодные состояния пропущены; исходный видеоряд сохранён");}
       }
       preparedCues.current.push(usable);
@@ -310,6 +315,11 @@ function News() {
         <p className="text-xs text-muted-foreground">{overlayMessage}</p>
       </div>
       <div className="panel p-3 space-y-2">
+        <div className="border-b border-border pb-2 space-y-1">
+          <b className="text-xs">Новый ролик из генератора · саундтрек Justice</b>
+          <video aria-label="New generator short" controls playsInline preload="metadata" src="/gta6_new_generator_short.mp4" className="w-full rounded bg-muted" />
+          <a href="/gta6_new_generator_short.mp4" download className="block text-xs text-primary underline">Скачать MP4 · новый генератор</a>
+        </div>
         <div className="border-b border-border pb-2 space-y-1">
           <b className="text-xs">212 GB · загрузка ≠ ранний доступ</b>
           <video aria-label="Game case padlock example" controls playsInline preload="metadata" src="/gta6_212gb_case_lock.mp4" className="w-full rounded bg-muted" />

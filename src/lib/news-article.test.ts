@@ -21,5 +21,5 @@ describe("news article", () => {
     expect(() => validateScript({ angle: "a", shots: [...ok.slice(0, 3), sh("runs at 60 FPS on PS5 Pro")] }, art)).toThrow(/не найден/);
   });
   it("honours model rejection of weak article", () => { expect(() => validateScript({ reject: true, reason: "weak" }, art)).toThrow(/отклонена/); });
-  it("requires evidence/illustration role", () => { expect(() => validateScript({ angle: "a", shots: ok.map((x) => ({ ...x, role: "proof" })) }, art)).toThrow(/роль/); });
+  it("downgrades an unknown role to illustration, never evidence", () => { expect(validateScript({ angle: "a", shots: ok.map((x) => ({ ...x, role: "proof" })) }, art).shots.every((s) => s.role === "illustration")).toBe(true); });
 });
