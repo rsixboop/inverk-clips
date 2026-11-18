@@ -139,7 +139,7 @@ export const pickClip = createServerFn({ method: "POST" }).middleware([requireSu
 export const getOutputUrl = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((d: unknown) => z.object({ jobId: z.string().uuid(), download: z.boolean() }).parse(d))
   .handler(async ({ data, context }) => {
     const { data: job } = await context.supabase.from("jobs").select("id,output_path,status").eq("id", data.jobId).single();
-    if (!job?.output_path || job.status !== "succeeded") throw new Error("Готового MP4 нет");
+    if (!job?.output_path || !["completed", "succeeded"].includes(job.status)) throw new Error("Готового MP4 нет");
     const { data: s, error } = await context.supabase.storage.from("outputs").createSignedUrl(job.output_path, 3600, data.download ? { download: `inverk-${job.id.slice(0, 8)}.mp4` } : undefined);
     if (error) throw new Error(error.message);
     return { url: s.signedUrl };

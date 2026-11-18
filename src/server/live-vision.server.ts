@@ -28,3 +28,16 @@ export async function recordScene(db: Admin, userId: string, monitorId: string, 
   await db.from("live_monitors").update({ stats: { ...stats, scene_at: new Date().toISOString(), scene: { ...s, frame_at: frameAt.toISOString() }, ...(s.game ? { last_game: s.game } : {}) } }).eq("id", monitorId);
   return { scene: s, switched_from: switched };
 }
+
+/** Successive buffered frames (oldest→newest) → is this a meaningful story beat / novel interaction, or routine? */
+export async function classifyEvent(frames: string[]) {
+  const { normalizeEvent } = await import("@/lib/live-events");
+  const { generateResponse } = await import("@lovable.dev/ai-gateway");
+  const r: any = await generateResponse({ model: "openai/gpt-6-astra",
+    instructions: "You see successive frames (oldest first, ~5 s apart) from a live game stream. Decide from visible pixels only whether they show a meaningful gameplay EVENT worth a short clip: story_beat (cutscene, mission start/finish, dramatic plot moment, death/defeat/win) or novel_interaction (entering a new place and interacting with an NPC/object, a fight, a deal, a stunt, a surprising encounter). routine = ordinary driving/walking/travel, menus, map, inventory, loading, idle, streamer just chatting, repetitive farming. none = nothing identifiable. Be conservative. Return strict JSON {\"kind\": \"story_beat\"|\"novel_interaction\"|\"routine\"|\"none\", \"label\": short concrete description (who/where/what), \"confidence\": 0..1, \"setup\": what leads in, \"payoff\": what happens}.",
+    input: [{ role: "user", content: [{ type: "input_text", text: "Frames in time order:" }, ...frames.map((f) => ({ type: "input_image", image_url: `data:image/jpeg;base64,${f}`, detail: "low" }))] }] } as any);
+  let out: string | undefined = r?.output_text;
+  if (!out) for (const o of r?.output ?? []) for (const x of o?.content ?? []) if (x?.type === "output_text") out = x.text;
+  const m = out?.match(/\{[\s\S]*\}/); if (!m) throw new Error("vision: no JSON");
+  return normalizeEvent(JSON.parse(m[0]));
+}

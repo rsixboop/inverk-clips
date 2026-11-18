@@ -1,0 +1,39 @@
+// One-click Windows launcher for the user's own recorder: downloads the current recorder.py from this app,
+// picks an available Python (py / python / Streamlink's bundled Python) and starts it. Token is entered
+// in the recorder's hidden prompt and stored in the user profile, never in this file.
+export function buildWindowsLauncher(appUrl: string) {
+  const url = new URL(appUrl).origin; // origin only: no quotes/metacharacters can reach cmd
+  return [
+    "@echo off",
+    "chcp 65001 >nul",
+    "setlocal",
+    "title Inverk Clips recorder",
+    `set "INVERK_URL=${url}"`,
+    'set "DIR=%LOCALAPPDATA%\\InverkClips"',
+    'if not exist "%DIR%" mkdir "%DIR%"',
+    "echo Загружаю актуальный рекордер...",
+    'curl.exe -fsSL "%INVERK_URL%/recorder/recorder.py" -o "%DIR%\\recorder.py.new" && move /y "%DIR%\\recorder.py.new" "%DIR%\\recorder.py" >nul',
+    'if not exist "%DIR%\\recorder.py" goto :nofile',
+    'set "PY="',
+    "py -3 -c \"import sys\" >nul 2>&1 && set \"PY=py -3\"",
+    'if not defined PY python -c "import sys" >nul 2>&1 && set "PY=python"',
+    'if not defined PY if exist "%ProgramFiles%\\Streamlink\\Python\\python.exe" set PY="%ProgramFiles%\\Streamlink\\Python\\python.exe"',
+    'if not defined PY if exist "%LOCALAPPDATA%\\Programs\\Streamlink\\Python\\python.exe" set PY="%LOCALAPPDATA%\\Programs\\Streamlink\\Python\\python.exe"',
+    "if not defined PY goto :nopy",
+    '%PY% "%DIR%\\recorder.py" %*',
+    "echo.",
+    "echo Рекордер остановлен.",
+    "pause",
+    "exit /b",
+    ":nofile",
+    "echo Не удалось скачать recorder.py с %INVERK_URL% - проверьте интернет.",
+    "pause",
+    "exit /b 1",
+    ":nopy",
+    "echo Не найден Python 3. Установите его: winget install Python.Python.3.12",
+    "echo или с https://www.python.org/downloads/ - отметьте Add python.exe to PATH, затем запустите этот файл снова.",
+    "pause",
+    "exit /b 1",
+    "",
+  ].join("\r\n");
+}
