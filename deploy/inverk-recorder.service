@@ -1,0 +1,24 @@
+[Unit]
+Description=Prompt to Pocket Clips live recorder
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+DynamicUser=yes
+StateDirectory=inverk-recorder
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/inverk-recorder
+Environment=HOME=/var/lib/inverk-recorder
+Environment=INVERK_BUFFER_DIR=/var/lib/inverk-recorder/buffer
+Environment=INVERK_STREAMLINK=/opt/inverk-recorder/venv/bin/streamlink
+EnvironmentFile=/etc/inverk-recorder.env
+ExecStart=/usr/bin/python3 -u /opt/inverk-recorder/recorder.py
+Restart=always
+RestartSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
