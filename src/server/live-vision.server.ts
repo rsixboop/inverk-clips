@@ -1,12 +1,12 @@
 // Visual game check: one real recent stream frame → vision model → stored, timestamped scene.
-import { detectSwitch, normalizeScene, SCENE_INTERVAL_MS, type Scene } from "@/lib/live-scene";
+import { trackGame, normalizeScene, SCENE_INTERVAL_MS, type Scene } from "@/lib/live-scene";
 type Admin = (typeof import("@/integrations/supabase/client.server"))["supabaseAdmin"];
 export const MAX_FRAME_BYTES = 400_000;
 
 export async function classifyFrame(jpegBase64: string): Promise<Scene> {
   const { generateResponse } = await import("@lovable.dev/ai-gateway");
   const r: any = await generateResponse({ model: "openai/gpt-6-astra",
-    instructions: "You classify one frame of a live stream. Judge ONLY from visible pixels (HUD, art style, UI, menus, webcam); never infer from titles. Return strict JSON {\"game\": string|null, \"activity\": \"gameplay\"|\"menu\"|\"chatting\"|\"unknown\", \"confidence\": 0..1, \"note\": short visual evidence}. game=null when not confidently identifiable. chatting = streamer/webcam/talking screen without active play. menu = pause, map, inventory, loading, lobby or settings.",
+    instructions: "You classify one frame of a live stream. Judge ONLY from visible pixels (HUD, art style, UI, menus, webcam); ignore release dates. Name an exact installment only when a visible logo, distinctive HUD or uniquely identifiable character supports it. Generic city streets, lighting and driving cannot distinguish GTA V, GTA VI or other games. Otherwise use null. Return strict JSON {\"game\": string|null, \"activity\": \"gameplay\"|\"menu\"|\"chatting\"|\"unknown\", \"confidence\": 0..1, \"note\": short visual evidence}. game=null when not confidently identifiable. chatting = streamer/webcam/talking screen without active play. menu = pause, map, inventory, loading, lobby or settings.",
     input: [{ role: "user", content: [{ type: "input_text", text: "Classify this frame." }, { type: "input_image", image_url: `data:image/jpeg;base64,${jpegBase64}`, detail: "low" }] }] } as any);
   let out: string | undefined = r?.output_text;
   if (!out) for (const o of r?.output ?? []) for (const x of o?.content ?? []) if (x?.type === "output_text") out = x.text;
@@ -23,9 +23,13 @@ export async function recordScene(db: Admin, userId: string, monitorId: string, 
   let s: Scene;
   if (!jpegBase64) s = { game: null, activity: "unavailable", confidence: 0, note: unavailableReason ?? "кадр недоступен" };
   else { try { s = await classifyFrame(jpegBase64); } catch (e) { s = { game: null, activity: "unavailable", confidence: 0, note: `vision: ${(e as Error).message.slice(0, 120)}` }; } }
-  const switched = detectSwitch(stats.last_game, s);
+  const previous = stats.game_track;
+  if (previous && frameAt.getTime() <= previous.at) return { skipped: "old frame" };
+  const track = trackGame(previous, s, frameAt.getTime());
+  const switched = previous?.game && track.game !== previous.game ? previous.game : null;
+  s = { ...s, game: track.game };
   await db.from("live_scene_checks").upsert({ monitor_id: monitorId, user_id: userId, frame_at: frameAt.toISOString(), game: s.game, activity: s.activity, confidence: s.confidence, note: s.note ?? null, switched_from: switched }, { onConflict: "monitor_id,frame_at" });
-  await db.from("live_monitors").update({ stats: { ...stats, scene_at: new Date().toISOString(), scene: { ...s, frame_at: frameAt.toISOString() }, ...(s.game ? { last_game: s.game } : {}) } }).eq("id", monitorId);
+  await db.from("live_monitors").update({ stats: { ...stats, scene_at: new Date().toISOString(), scene: { ...s, frame_at: frameAt.toISOString() }, game_track: track, last_game: track.game } }).eq("id", monitorId);
   return { scene: s, switched_from: switched };
 }
 

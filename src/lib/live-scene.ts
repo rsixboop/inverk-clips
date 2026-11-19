@@ -12,8 +12,19 @@ export function normalizeScene(raw: unknown): Scene {
   if (!game || /^(unknown|none|n\/a|null)$/i.test(game) || confidence < MIN_CONFIDENCE) game = null;
   return { game, activity: confidence < MIN_CONFIDENCE && activity !== "chatting" ? "unknown" : activity, confidence, note: typeof r["note"] === "string" ? r["note"].slice(0, 160) : undefined };
 }
-const key = (g: string) => g.toLowerCase().replace(/[^a-z0-9]+/g, "").replace(/^grandtheftauto/, "gta").replace(/^gta(vi|6)$/, "gta6");
+const key = (g: string) => g.toLowerCase().replace(/[^a-z0-9]+/g, "").replace(/^grandtheftauto/, "gta").replace(/^gta(vi|6)$/, "gta6").replace(/^gta(v|5)$/, "gta5");
 /** A switch is a confident game that differs from the last confidently identified game. */
 export function detectSwitch(prevGame: string | null | undefined, s: Scene): string | null {
   return prevGame && s.game && key(prevGame) !== key(s.game) ? prevGame : null;
+}
+
+export type GameTrack = { game: string | null; pending: string | null; count: number; at: number };
+export function trackGame(previous: GameTrack | undefined, scene: Scene, at: number): GameTrack {
+  if (previous && at <= previous.at) return previous;
+  const game = previous?.game ?? null;
+  const candidate = scene.activity === "gameplay" && scene.confidence >= 0.9 ? scene.game : null;
+  if (!candidate || (game && key(candidate) === key(game))) return { game, pending: null, count: 0, at };
+  const consecutive = previous?.pending && key(previous.pending) === key(candidate) && at - previous.at < 300_000;
+  const count = consecutive ? previous.count + 1 : 1;
+  return count >= 3 ? { game: candidate, pending: null, count: 0, at } : { game, pending: candidate, count, at };
 }

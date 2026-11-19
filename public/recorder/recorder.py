@@ -229,7 +229,7 @@ def sync_monitors():
     r = api("monitors"); ms = r.get("monitors", [])
     if r.get("error", "").startswith("401"):  # token revoked in Sources: forget it and ask for a new one on next start
         save_cfg({**load_cfg(), "token": ""}); raise SystemExit("Токен отозван или неверен. Создайте новый в «Источники» и запустите рекордер снова.")
-    if r.get("error"): print("ошибка API:", sanitize(r["error"]), flush=True)
+    if r.get("error"): raise RuntimeError(sanitize(r["error"]))
     live = {m["id"]: m for m in ms if m["media_mode"] == "recorder" and m["status"] == "live" and m.get("record_url")}
     for mid, s in list(procs.items()):
         if mid not in live or not s.alive() or live[mid]["record_url"] != s.url:
@@ -648,15 +648,18 @@ def event_loop():
     """Round-robin over channels; the server additionally caps scans per channel and per user across channels."""
     last = {}
     while True:
-        time.sleep(EVENT_S)
-        for mid, s in list(procs.items()):
-            try:
-                segs = all_segments(mid)
-                if not s.alive() or len(segs) < 3 or last.get(mid) == segs[-2][0]: continue
-                last[mid] = segs[-2][0]
+        channels = [(mid, session) for mid, session in list(procs.items()) if session.alive()]
+        time.sleep(max(21, EVENT_S / max(1, len(channels))))
+        if not channels: continue
+        mid, session = min(channels, key=lambda item: last.get(item[0], 0))
+        last[mid] = time.monotonic()
+        try:
+            if procs.get(mid) is not session: continue
+            segs = all_segments(mid)
+            if len(segs) >= 3:
                 r = event_scan(mid, segs)
                 if r and r.get("keep"): print("игровое событие", mid[:8], r.get("reason"), flush=True)
-            except Exception as e: print("event error", sanitize(str(e)), flush=True)
+        except Exception as e: print("event error", sanitize(str(e)), flush=True)
 
 def main():
     global FOLDER
