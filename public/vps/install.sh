@@ -8,11 +8,14 @@ command -v python3 >/dev/null || { apt-get update && apt-get install -y python3;
 install -d -m 0755 /opt/inverk-agent; install -d -m 0700 /etc/inverk-agent /var/lib/inverk-agent
 curl -fsSL "$APP/vps/inverk_agent.py" -o /opt/inverk-agent/inverk_agent.py.new
 python3 -m py_compile /opt/inverk-agent/inverk_agent.py.new && mv /opt/inverk-agent/inverk_agent.py.new /opt/inverk-agent/inverk_agent.py
-[ -f /etc/inverk-agent/config.json ] || printf '{"server": "%s"}\n' "$APP" > /etc/inverk-agent/config.json
+# The studio may run with DynamicUser=yes: /var/lib/inverk-studio is then a symlink to /var/lib/private/inverk-studio.
+# Resolve it so sandboxing (ReadWritePaths) and the agent use the real directory.
+STUDIO="$(readlink -f /var/lib/inverk-studio 2>/dev/null || echo /var/lib/inverk-studio)"
+[ -f "$STUDIO/reddit-studio.sqlite3" ] || echo "warning: $STUDIO/reddit-studio.sqlite3 not found (archive will show as missing)"
+[ -f "$STUDIO/buffer.key" ] || echo "warning: $STUDIO/buffer.key not found (Buffer will show as unavailable)"
+printf '{"server": "%s", "db": "%s/reddit-studio.sqlite3", "buffer_key": "%s/buffer.key"}\n' "$APP" "$STUDIO" "$STUDIO" > /etc/inverk-agent/config.json
 chmod 0600 /etc/inverk-agent/config.json
-[ -f /var/lib/inverk-studio/reddit-studio.sqlite3 ] || echo "warning: /var/lib/inverk-studio/reddit-studio.sqlite3 not found (archive will show as missing)"
-[ -f /var/lib/inverk-studio/buffer.key ] || echo "warning: /var/lib/inverk-studio/buffer.key not found (Buffer will show as unavailable)"
-python3 /opt/inverk-agent/inverk_agent.py pair "$CODE"
+INVERK_AGENT_CONF=/etc/inverk-agent INVERK_AGENT_STATE=/var/lib/inverk-agent python3 /opt/inverk-agent/inverk_agent.py pair "$CODE"
 cat > /etc/systemd/system/inverk-agent.service <<UNIT
 [Unit]
 Description=Inverk Clips VPS agent (outbound)
@@ -26,7 +29,8 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-ReadWritePaths=/var/lib/inverk-studio /var/lib/inverk-agent /etc/inverk-agent
+Environment=INVERK_AGENT_CONF=/etc/inverk-agent INVERK_AGENT_STATE=/var/lib/inverk-agent
+ReadWritePaths=$STUDIO /var/lib/inverk-agent /etc/inverk-agent
 [Install]
 WantedBy=multi-user.target
 UNIT

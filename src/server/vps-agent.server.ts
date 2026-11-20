@@ -1,5 +1,5 @@
 // Outbound VPS agent API. The agent authenticates with a token issued by one-time owner pairing; only its hash is stored.
-import { parseOp } from "@/lib/vps-ops";
+import { MIRROR_KINDS, parseOp } from "@/lib/vps-ops";
 
 async function admin() { return (await import("@/integrations/supabase/client.server")).supabaseAdmin; }
 export async function sha256(t: string) {
@@ -57,7 +57,7 @@ export async function handleVpsAgent(request: Request): Promise<Response> {
 
   if (body.action === "mirror") {
     const kind = String(body.kind ?? "");
-    if (!/^(table:[A-Za-z0-9_]{1,64}|buffer:(channels|posts|error)|schema)$/.test(kind)) return err("mirror", "kind not allowed");
+    if (!(MIRROR_KINDS as readonly string[]).includes(kind)) return err("mirror", "kind not allowed");
     const rows = Array.isArray(body.rows) ? body.rows.slice(0, 1000) : [];
     const recs = rows.filter((r: any) => r && r.key != null).map((r: any) => ({ agent_id: agent.id, user_id: agent.user_id, kind, row_key: String(r.key).slice(0, 200), data: r.data ?? {}, updated_at: now }));
     for (let i = 0; i < recs.length; i += 200) {

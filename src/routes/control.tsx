@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useVpsAgent } from "@/components/vps/useVps";
 import { VpsBadge } from "@/components/vps/VpsBadge";
-import { agentState, type ServiceInfo } from "@/lib/vps-ops";
+import { agentState, parseRedditUrl, type ServiceInfo } from "@/lib/vps-ops";
+import { Textarea } from "@/components/ui/textarea";
 import { createVpsPairing, enqueueVpsOp, revokeVpsAgent } from "@/lib/vps.functions";
 
 export const Route = createFileRoute("/control")({
@@ -41,11 +42,8 @@ function Control() {
 
   if (!agent) return <div className="mx-auto max-w-xl space-y-4"><h1 className="text-base font-bold">VPS</h1><Pairing /></div>;
   const services = Object.entries((agent.services ?? {}) as Record<string, ServiceInfo>);
-  const schema = mirror.filter((r) => r.kind === "schema");
-  const tables = schema.map((s) => s.row_key);
-  const archive = tables.filter((t) => /reddit|post|stor/i.test(t));
-  const settings = mirror.filter((r) => r.kind === "table:settings").map((r) => r.data);
-  const interval = settings.find((d) => d.key === "collect_interval_minutes")?.value;
+  const stories = mirror.filter((r) => r.kind === "stories");
+  const settings = mirror.find((r) => r.kind === "settings")?.data as { enabled: boolean; minutes: number } | undefined;
   const chans = mirror.filter((r) => r.kind === "buffer:channels");
   const posts = mirror.filter((r) => r.kind === "buffer:posts");
   const bufErr = mirror.find((r) => r.kind === "buffer:error")?.data?.error;
@@ -69,25 +67,26 @@ function Control() {
         ))}
       </Section>
 
-      <Section title="Интервал сбора">
-        <IntervalForm current={interval} onSave={(m) => run("collect.set_interval", { minutes: m }, `interval:${m}:${Date.now() / 60000 | 0}`)} />
+      <Section title="Сбор Reddit">
+        <CollectForm current={settings} onSave={(enabled, minutes) => run("collect.set", { enabled, minutes }, `collect:${enabled}:${minutes}:${(Date.now() / 60000) | 0}`)} />
       </Section>
 
       <Section title="Архив" right={<Button size="sm" variant="secondary" onClick={() => run("sync.now", {})}>Обновить</Button>}>
-        <RedditForm onAdd={(url, title) => run("reddit.add", title ? { url, title } : { url }, `reddit:${url}`)} />
-        {!tables.length && <p className="text-sm text-muted-foreground">Архив ещё не получен с VPS.</p>}
-        {(archive.length ? archive : tables).map((t) => <TableView key={t} name={t} rows={mirror.filter((r) => r.kind === `table:${t}`)} total={schema.find((s) => s.row_key === t)?.data?.rows} />)}
+        <RedditForm onAdd={(url, title, body) => run("reddit.add", { url, ...(title ? { title } : {}), ...(body ? { body } : {}) }, `reddit:${url}:${body ? body.length : 0}:${title ?? ""}`)} />
+        {!stories.length && <p className="text-sm text-muted-foreground">Архив ещё не получен с VPS.</p>}
+        {stories.map((r) => <StoryRow key={r.row_key} r={r} />)}
       </Section>
 
       <Section title="Buffer" right={<Button size="sm" variant="secondary" onClick={() => run("buffer.refresh", {})}>Обновить</Button>}>
-        <p className="text-[11px] text-muted-foreground">Только просмотр. Приложение ничего не публикует и не отправляет в очередь.</p>
+        <p className="text-[11px] text-muted-foreground">Приложение ничего не публикует. Черновик в Buffer создаётся только по вашей кнопке.</p>
+        {chans.length > 0 && <DraftForm chans={chans} onCreate={(channel_id, text, video_url) => run("buffer.create_draft", { channel_id, text, video_url })} />}
         {bufErr && <p className="text-sm text-destructive">{bufErr}</p>}
         {chans.map((c) => {
           const ps = posts.filter((p) => p.data.channel === c.row_key);
           return (
             <div key={c.row_key} className="border-b border-border py-2 last:border-0">
-              <div className="text-sm font-medium">{c.data.name} <span className="text-xs text-muted-foreground">{c.data.service}{c.data.paused ? " · пауза" : ""} · черновиков {ps.filter((p) => p.data.status === "draft").length} · в очереди {ps.filter((p) => p.data.status === "queued").length}</span></div>
-              {ps.slice(0, 10).map((p) => <div key={p.row_key} className="mt-1 text-xs"><span className="text-muted-foreground">{p.data.status === "draft" ? "черновик" : `очередь ${p.data.due_at ? new Date(p.data.due_at * 1000).toLocaleString("ru-RU") : ""}`}</span> · {String(p.data.text).slice(0, 140)}</div>)}
+              <div className="text-sm font-medium">{c.data.name} <span className="text-xs text-muted-foreground">{c.data.service}{c.data.paused ? " · пауза" : ""} · черновиков {ps.filter((p) => p.data.status === "draft").length} · в очереди {ps.filter((p) => p.data.status === "scheduled").length}</span></div>
+              {ps.slice(0, 10).map((p) => <div key={p.row_key} className="mt-1 text-xs"><span className="text-muted-foreground">{p.data.status === "draft" ? "черновик" : `очередь ${fmt(p.data.due_at)}`}</span> · {String(p.data.text).slice(0, 140)}</div>)}
             </div>
           );
         })}
@@ -102,6 +101,7 @@ function Control() {
             <span className="float-right text-muted-foreground">{fmt(c.created_at)}</span>
             {c.error && <div className="text-destructive">{c.error}</div>}
             {c.result?.existing && <div className="text-muted-foreground">уже было в архиве — дубликат не создан</div>}
+            {c.result?.post_id && <div className="text-muted-foreground">черновик Buffer {c.result.post_id}</div>}
           </div>
         ))}
       </Section>
@@ -115,38 +115,55 @@ function Section({ title, right, children }: { title: string; right?: React.Reac
   return <section className="panel space-y-2 p-3"><div className="flex items-center justify-between"><h2 className="text-sm font-semibold">{title}</h2>{right}</div>{children}</section>;
 }
 
-function IntervalForm({ current, onSave }: { current?: string; onSave: (m: number) => void }) {
-  const [v, setV] = useState("");
+function CollectForm({ current, onSave }: { current?: { enabled: boolean; minutes: number } | undefined; onSave: (enabled: boolean, m: number) => void }) {
+  const [en, setEn] = useState<boolean | null>(null); const [v, setV] = useState("");
+  const enabled = en ?? current?.enabled ?? false;
   return (
-    <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); const m = Number(v); if (m >= 5 && m <= 1440) onSave(m); else toast.error("От 5 до 1440 минут"); }}>
-      <span className="text-sm text-muted-foreground">сейчас: {current ?? "не задан в базе"} мин</span>
-      <Input className="w-24" inputMode="numeric" placeholder="мин" value={v} onChange={(e) => setV(e.target.value)} />
+    <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); const m = Number(v || current?.minutes); if (m >= 5 && m <= 1440) onSave(enabled, m); else toast.error("От 5 до 1440 минут"); }}>
+      <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={enabled} onChange={(e) => setEn(e.target.checked)} /> включён</label>
+      <Input className="w-24" inputMode="numeric" placeholder={String(current?.minutes ?? "мин")} value={v} onChange={(e) => setV(e.target.value)} />
+      <span className="text-sm text-muted-foreground">мин · сейчас: {current ? `${current.enabled ? "вкл" : "выкл"}, ${current.minutes}` : "нет данных"}</span>
       <Button size="sm" type="submit">Сохранить</Button>
     </form>
   );
 }
 
-function RedditForm({ onAdd }: { onAdd: (url: string, title?: string) => void }) {
-  const [url, setUrl] = useState(""); const [title, setTitle] = useState("");
+function RedditForm({ onAdd }: { onAdd: (url: string, title?: string, body?: string) => void }) {
+  const [url, setUrl] = useState(""); const [title, setTitle] = useState(""); const [body, setBody] = useState("");
   return (
-    <form className="flex flex-col gap-2 sm:flex-row" onSubmit={(e) => { e.preventDefault(); if (!/^https:\/\/(www\.|old\.)?(reddit\.com|redd\.it)\//.test(url.trim())) { toast.error("Нужна ссылка reddit.com"); return; } onAdd(url.trim(), title.trim() || undefined); setUrl(""); setTitle(""); }}>
-      <Input placeholder="https://www.reddit.com/r/…" value={url} onChange={(e) => setUrl(e.target.value)} />
+    <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); if (!parseRedditUrl(url)) { toast.error("Нужна ссылка reddit.com/r/<sub>/comments/<id>/"); return; } onAdd(url.trim(), title.trim() || undefined, body.trim() || undefined); setUrl(""); setTitle(""); setBody(""); }}>
+      <Input placeholder="https://www.reddit.com/r/…/comments/…/" value={url} onChange={(e) => setUrl(e.target.value)} />
       <Input placeholder="Заголовок (необязательно)" value={title} onChange={(e) => setTitle(e.target.value)} />
-      <Button size="sm" type="submit">Добавить</Button>
+      <Textarea placeholder="Текст истории (необязательно, сохранится как ручной)" value={body} onChange={(e) => setBody(e.target.value)} rows={3} />
+      <Button size="sm" type="submit">Добавить в архив</Button>
     </form>
   );
 }
 
-function TableView({ name, rows, total }: { name: string; rows: Row[]; total?: number }) {
-  const [open, setOpen] = useState(false);
-  const pick = (d: any) => d.title ?? d.name ?? d.headline ?? d.url ?? JSON.stringify(d).slice(0, 120);
+function StoryRow({ r }: { r: Row }) {
+  const [open, setOpen] = useState(false); const d = r.data;
   return (
-    <div className="border-t border-border pt-2">
-      <button className="text-sm font-medium" onClick={() => setOpen(!open)}>{name} <span className="text-xs text-muted-foreground">{total ?? rows.length} строк{open ? "" : " · показать"}</span></button>
-      {open && rows.sort((a, b) => Number(b.row_key) - Number(a.row_key)).slice(0, 100).map((r) => (
-        <div key={r.row_key} className="mt-1 text-xs"><span className="text-muted-foreground">{r.data.status ?? r.data.subreddit ?? ""}</span> {r.data.url ? <a className="underline" href={r.data.url} target="_blank" rel="noreferrer">{String(pick(r.data)).slice(0, 140)}</a> : String(pick(r.data)).slice(0, 140)}</div>
-      ))}
+    <div className="border-t border-border pt-2 text-xs">
+      <div><span className="text-muted-foreground">r/{d.community}{d.seen ? " · просмотрено" : ""}{d.manual ? " · ручной текст" : ""}</span>{" "}
+        <a className="underline" href={d.url} target="_blank" rel="noreferrer">{d.title || r.row_key}</a>
+        {d.body && <button className="ml-2 text-muted-foreground" onClick={() => setOpen(!open)}>{open ? "скрыть" : "текст"}</button>}</div>
+      {open && <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{d.body}</p>}
     </div>
+  );
+}
+
+function DraftForm({ chans, onCreate }: { chans: Row[]; onCreate: (ch: string, text: string, url: string) => void }) {
+  const [ch, setCh] = useState(chans[0]!.row_key); const [url, setUrl] = useState(""); const [text, setText] = useState("");
+  return (
+    <form className="space-y-2 border-b border-border pb-3" onSubmit={(e) => { e.preventDefault(); if (!/^https:\/\/\S+$/.test(url.trim())) { toast.error("Нужна HTTPS ссылка на видео"); return; } if (!text.trim()) { toast.error("Нужна подпись"); return; }
+      if (confirm("Создать черновик в Buffer? Он не будет опубликован.")) { onCreate(ch, text.trim(), url.trim()); setUrl(""); setText(""); } }}>
+      <select className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm" value={ch} onChange={(e) => setCh(e.target.value)}>
+        {chans.map((c) => <option key={c.row_key} value={c.row_key}>{c.data.name} · {c.data.service}</option>)}
+      </select>
+      <Input placeholder="https://…/video.mp4" value={url} onChange={(e) => setUrl(e.target.value)} />
+      <Textarea placeholder="Подпись" value={text} onChange={(e) => setText(e.target.value)} rows={2} />
+      <Button size="sm" type="submit">Создать черновик</Button>
+    </form>
   );
 }
 

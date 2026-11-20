@@ -3,19 +3,19 @@
 
 - Pairs once with a one-time code from the app; token kept in /etc/inverk-agent/token (0600), never sent anywhere but the app.
 - Heartbeat every 30 s with the last server timestamp it received and systemd service states.
-- Mirrors the existing reddit-studio SQLite (opened read-only) and Buffer channels/drafts/queue (key read from local buffer.key, never uploaded).
+- Mirrors allowlisted non-secret fields of the reddit-studio SQLite (stories+archive_text, settings id=1) and Buffer channels/drafts/queue (key read from local buffer.key, never uploaded).
 - Executes only allowlisted operations; each command id runs at most once (local state). It never publishes anything.
 Stdlib only.
 """
 import json, os, re, sqlite3, subprocess, sys, time, urllib.request, urllib.error, urllib.parse
 
-VERSION = "1.0"
+VERSION = "1.1"
 CONF_DIR = os.environ.get("INVERK_AGENT_CONF", "/etc/inverk-agent")
 STATE_DIR = os.environ.get("INVERK_AGENT_STATE", "/var/lib/inverk-agent")
 DEFAULTS = {"server": "https://inverk-clips.lovable.app", "db": "/var/lib/inverk-studio/reddit-studio.sqlite3",
             "buffer_key": "/var/lib/inverk-studio/buffer.key", "units": [], "unit_glob": "inverk*",
-            "reddit_table": "", "settings_table": "settings", "interval_key": "collect_interval_minutes", "rows_per_table": 500}
-OPS = {"reddit.add", "collect.set_interval", "service.restart", "sync.now", "buffer.refresh"}
+            "rows_per_table": 500}
+OPS = {"reddit.add", "collect.set", "service.restart", "sync.now", "buffer.refresh", "buffer.create_draft"}
 
 def log(*a): print(time.strftime("%H:%M:%S"), *a, flush=True)
 
@@ -51,58 +51,70 @@ def save_state(s):
     with open(p, "w") as f: json.dump(s, f)
     os.replace(p, os.path.join(STATE_DIR, "state.json"))
 
-# ---------- sqlite ----------
+# ---------- sqlite (studio.py schema: stories, archive_text, settings id=1) ----------
+REDDIT = re.compile(r"^https://(?:www\.|old\.|new\.)?reddit\.com/r/([A-Za-z0-9_]{2,21})/comments/([a-z0-9]{3,12})(?:/|$)", re.I)
+def parse_reddit(url):
+    m = REDDIT.match(url.strip())
+    if not m: raise RuntimeError("not a reddit /r/<sub>/comments/<id>/ url")
+    return m.group(1), "t3_" + m.group(2).lower()
+
 def ro(c): return sqlite3.connect(f"file:{c['db']}?mode=ro", uri=True, timeout=10)
-def tables(con): return [r[0] for r in con.execute("select name from sqlite_master where type='table' and name not like 'sqlite_%'")]
-def cols(con, t): return [r[1] for r in con.execute(f'pragma table_info("{t}")')]
-def safe(t): return re.fullmatch(r"[A-Za-z0-9_]{1,64}", t) is not None
+def rw(c): return sqlite3.connect(c["db"], timeout=15, isolation_level=None)
+def fix_owner(c):
+    """The studio service owns the db (DynamicUser); keep sidecar files owned by it after our writes."""
+    try:
+        st = os.stat(c["db"])
+        for sfx in ("-wal", "-shm", "-journal"):
+            p = c["db"] + sfx
+            if os.path.exists(p): os.chown(p, st.st_uid, st.st_gid)
+    except OSError: pass
 
 def mirror_db(c, tok):
     if not os.path.exists(c["db"]): return {"db": "missing"}
-    con = ro(c); schema = []
+    con = ro(c)
     try:
-        for t in tables(con):
-            if not safe(t): continue
-            cs = cols(con, t); schema.append({"key": t, "data": {"columns": cs, "rows": con.execute(f'select count(*) from "{t}"').fetchone()[0]}})
-            order = "rowid desc"
-            rows = con.execute(f'select rowid, * from "{t}" order by {order} limit ?', (int(c["rows_per_table"]),)).fetchall()
-            recs = [{"key": r[0], "data": {k: (v if not isinstance(v, bytes) else None) for k, v in zip(cs, r[1:])}} for r in rows]
-            call(c, {"action": "mirror", "kind": "table:" + t, "rows": recs, "full": True}, tok)
-        call(c, {"action": "mirror", "kind": "schema", "rows": schema, "full": True}, tok)
+        rows = con.execute("""select s.id, s.community, s.title, s.url, s.seen, a.body, a.manual
+            from stories s left join archive_text a on a.id = s.id order by s.rowid desc limit ?""", (int(c["rows_per_table"]),)).fetchall()
+        stories = [{"key": r[0], "data": {"community": r[1], "title": r[2], "url": r[3], "seen": bool(r[4]),
+                    "body": (r[5] or "")[:4000] if r[5] is not None else None, "manual": bool(r[6]) if r[6] is not None else False}} for r in rows]
+        srow = con.execute("select enabled, minutes from settings where id = 1").fetchone()
     finally: con.close()
-    return {"db": "ok", "tables": len(schema), "mtime": os.path.getmtime(c["db"])}
-
-def reddit_table(con, c):
-    if c["reddit_table"]: return c["reddit_table"]
-    for t in tables(con):
-        if safe(t) and "url" in cols(con, t) and re.search(r"reddit|post|stor", t, re.I): return t
-    raise RuntimeError("no reddit table with a url column; set reddit_table in /etc/inverk-agent/config.json")
+    call(c, {"action": "mirror", "kind": "stories", "rows": stories, "full": True}, tok)
+    call(c, {"action": "mirror", "kind": "settings", "rows": [{"key": "1", "data": {"enabled": bool(srow[0]), "minutes": srow[1]}}] if srow else [], "full": True}, tok)
+    return {"db": "ok", "stories": len(stories)}
 
 def op_reddit_add(c, a):
-    con = sqlite3.connect(c["db"], timeout=15)
+    community, sid = parse_reddit(a["url"])
+    title = (a.get("title") or "").strip(); body = a.get("body")
+    con = rw(c)
     try:
-        t = reddit_table(con, c); cs = cols(con, t)
-        hit = con.execute(f'select rowid from "{t}" where url = ?', (a["url"],)).fetchone()
-        if hit: return {"table": t, "rowid": hit[0], "existing": True}
-        vals = {"url": a["url"], "title": a.get("title"), "note": a.get("note"), "source": "manual", "status": "new",
-                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-        vals = {k: v for k, v in vals.items() if k in cs and v is not None}
-        q = f'insert into "{t}" ({",".join(chr(34)+k+chr(34) for k in vals)}) values ({",".join("?"*len(vals))})'
-        with con: cur = con.execute(q, list(vals.values()))
-        return {"table": t, "rowid": cur.lastrowid, "existing": False, "columns": list(vals)}
-    finally: con.close()
+        con.execute("begin immediate")
+        try:
+            existed = con.execute("select 1 from stories where id = ?", (sid,)).fetchone() is not None
+            if not existed:
+                con.execute("insert into stories (id, community, title, url, seen) values (?, ?, ?, ?, 0)", (sid, community, title, a["url"].strip()))
+            elif title:
+                con.execute("update stories set title = ? where id = ?", (title, sid))
+            if body is not None and body.strip():
+                con.execute("insert into archive_text (id, body, manual) values (?, ?, 1) on conflict(id) do update set body = excluded.body, manual = 1", (sid, body))
+            con.execute("commit")
+        except Exception:
+            con.execute("rollback"); raise
+    finally: con.close(); fix_owner(c)
+    return {"id": sid, "community": community, "existing": existed, "body": bool(body and body.strip())}
 
-def op_set_interval(c, a):
-    con = sqlite3.connect(c["db"], timeout=15); t = c["settings_table"]
+def op_collect_set(c, a):
+    con = rw(c)
     try:
-        if not safe(t) or t not in tables(con): raise RuntimeError(f"settings table '{t}' not found in sqlite; set settings_table in config")
-        cs = cols(con, t)
-        if not {"key", "value"} <= set(cs): raise RuntimeError(f"table {t} has no key/value columns")
-        with con:
-            if con.execute(f'update "{t}" set value=? where key=?', (str(a["minutes"]), c["interval_key"])).rowcount == 0:
-                con.execute(f'insert into "{t}" (key,value) values (?,?)', (c["interval_key"], str(a["minutes"])))
-        return {"key": c["interval_key"], "minutes": a["minutes"]}
-    finally: con.close()
+        con.execute("begin immediate")
+        try:
+            if con.execute("update settings set enabled = ?, minutes = ? where id = 1", (1 if a["enabled"] else 0, int(a["minutes"]))).rowcount == 0:
+                con.execute("insert into settings (id, enabled, minutes) values (1, ?, ?)", (1 if a["enabled"] else 0, int(a["minutes"])))
+            con.execute("commit")
+        except Exception:
+            con.execute("rollback"); raise
+    finally: con.close(); fix_owner(c)
+    return {"enabled": a["enabled"], "minutes": a["minutes"]}
 
 # ---------- systemd ----------
 def units(c):
@@ -129,37 +141,60 @@ def op_restart(c, a):
     if r.returncode: raise RuntimeError(r.stderr.strip()[:300] or f"exit {r.returncode}")
     return {"unit": a["unit"], "restarted": True}
 
-# ---------- Buffer (read only) ----------
+# ---------- Buffer (GraphQL only, https://api.buffer.com) ----------
+BUFFER_URL = "https://api.buffer.com"
 def buffer_key(c):
     with open(c["buffer_key"]) as f: return f.read().strip()
 
-def http_json(url, key=None, body=None):
-    h = {"user-agent": "inverk-agent/" + VERSION, "content-type": "application/json"}
-    if key and body is not None: h["authorization"] = "Bearer " + key
-    req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=h)
-    with urllib.request.urlopen(req, timeout=30) as r: return json.loads(r.read())
+def gql(c, query, variables=None, timeout=30):
+    req = urllib.request.Request(BUFFER_URL, data=json.dumps({"query": query, "variables": variables or {}}).encode(),
+        headers={"content-type": "application/json", "authorization": "Bearer " + buffer_key(c), "user-agent": "inverk-agent/" + VERSION}, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as r: out = json.loads(r.read())
+    if out.get("errors"): raise RuntimeError("Buffer GraphQL: " + "; ".join(str(e.get("message", ""))[:120] for e in out["errors"]))
+    return out["data"]
+
+Q_ORGS = "query { account { organizations { id } } }"
+Q_CHANNELS = "query Ch($id: OrganizationId!) { channels(input: {organizationId: $id}) { id name service } }"
+Q_POSTS = """query Posts($id: OrganizationId!) { posts(first: 50, input: {organizationId: $id,
+  sort: [{field: dueAt, direction: asc}, {field: createdAt, direction: desc}], filter: {status: [scheduled, draft]}}) {
+  edges { node { id text status dueAt channelId } } } }"""
+M_DRAFT = """mutation Draft($input: CreatePostInput!) { createPost(input: $input) {
+  ... on PostActionSuccess { post { id } } ... on MutationError { message } } }"""
 
 def mirror_buffer(c, tok):
-    try: key = buffer_key(c)
-    except Exception as e:
-        call(c, {"action": "mirror", "kind": "buffer:error", "rows": [{"key": "last", "data": {"error": f"buffer.key: {type(e).__name__}"}}], "full": True}, tok); return
+    def fail(msg): call(c, {"action": "mirror", "kind": "buffer:error", "rows": [{"key": "last", "data": {"error": msg[:300]}}], "full": True}, tok)
+    try: buffer_key(c)
+    except Exception as e: return fail(f"buffer.key: {type(e).__name__}")
     try:
-        q = "https://api.bufferapp.com/1/"; tq = "access_token=" + urllib.parse.quote(key)
-        profiles = http_json(f"{q}profiles.json?{tq}")
-        chans = [{"key": p["id"], "data": {"name": p.get("formatted_username") or p.get("service_username"), "service": p.get("service"), "paused": p.get("paused")}} for p in profiles]
-        posts = []
-        for p in profiles[:20]:
-            for status in ("pending", "drafts"):
-                try: ups = http_json(f"{q}profiles/{p['id']}/updates/{status}.json?{tq}&count=50").get("updates", [])
-                except urllib.error.HTTPError: continue
-                for u in ups:
-                    posts.append({"key": u["id"], "data": {"channel": p["id"], "status": "draft" if status == "drafts" else "queued", "text": (u.get("text") or "")[:500], "due_at": u.get("due_at"), "media": bool(u.get("media"))}})
+        chans, posts = [], []
+        for org in gql(c, Q_ORGS)["account"]["organizations"]:
+            for ch in gql(c, Q_CHANNELS, {"id": org["id"]})["channels"]:
+                chans.append({"key": ch["id"], "data": {"name": ch.get("name"), "service": ch.get("service")}})
+            for e in gql(c, Q_POSTS, {"id": org["id"]})["posts"]["edges"]:
+                n = e["node"]; posts.append({"key": n["id"], "data": {"channel": n.get("channelId"), "status": n.get("status"), "text": (n.get("text") or "")[:500], "due_at": n.get("dueAt")}})
         call(c, {"action": "mirror", "kind": "buffer:channels", "rows": chans, "full": True}, tok)
         call(c, {"action": "mirror", "kind": "buffer:posts", "rows": posts, "full": True}, tok)
         call(c, {"action": "mirror", "kind": "buffer:error", "rows": [], "full": True}, tok)
-    except Exception as e:
-        msg = f"HTTP {e.code}" if isinstance(e, urllib.error.HTTPError) else type(e).__name__
-        call(c, {"action": "mirror", "kind": "buffer:error", "rows": [{"key": "last", "data": {"error": "Buffer API: " + msg}}], "full": True}, tok)
+    except urllib.error.HTTPError as e: fail(f"Buffer API: HTTP {e.code}")
+    except Exception as e: fail(f"{type(e).__name__}: {e}")
+
+def op_buffer_draft(c, a, cmd_id, st):
+    """Pre-submit barrier: persist 'submitting' before the POST. If we crash or time out after that, the outcome is
+    unknown and we never resubmit automatically — the user must check Buffer and click again (new command)."""
+    if not re.fullmatch(r"[a-f0-9]{24}", a["channel_id"]) or not a["video_url"].startswith("https://"): raise RuntimeError("bad draft args")
+    sub = st.setdefault("submitting", {})
+    if cmd_id in sub: raise RuntimeError("ambiguous: earlier submit had no confirmed result; check Buffer drafts before retrying")
+    sub[cmd_id] = time.time(); save_state(st)
+    try: data = gql(c, M_DRAFT, {"input": {"channelId": a["channel_id"], "text": a["text"], "schedulingType": "automatic", "mode": "addToQueue",
+                                      "saveToDraft": True, "assets": [{"video": {"url": a["video_url"]}}]}}, timeout=45)
+    except urllib.error.HTTPError as e:
+        if 400 <= e.code < 500: sub.pop(cmd_id, None); save_state(st); raise RuntimeError(f"Buffer rejected: HTTP {e.code}") from None
+        raise RuntimeError(f"ambiguous: HTTP {e.code}; check Buffer drafts before retrying") from None
+    except RuntimeError as e: sub.pop(cmd_id, None); save_state(st); raise  # GraphQL errors = definite rejection
+    except Exception as e: raise RuntimeError(f"ambiguous: {type(e).__name__}; check Buffer drafts before retrying") from None
+    r = data["createPost"]
+    if r.get("message"): sub.pop(cmd_id, None); save_state(st); raise RuntimeError("Buffer: " + r["message"][:200])  # definite rejection
+    return {"post_id": r["post"]["id"], "draft": True}
 
 # ---------- loop ----------
 def run_op(c, tok, cmd, st):
@@ -168,7 +203,8 @@ def run_op(c, tok, cmd, st):
     try:
         if op not in OPS: raise RuntimeError("op not allowlisted")
         if op == "reddit.add": r = op_reddit_add(c, a); mirror_db(c, tok)
-        elif op == "collect.set_interval": r = op_set_interval(c, a); mirror_db(c, tok)
+        elif op == "collect.set": r = op_collect_set(c, a); mirror_db(c, tok)
+        elif op == "buffer.create_draft": r = op_buffer_draft(c, a, cmd["id"], st); mirror_buffer(c, tok)
         elif op == "service.restart": r = op_restart(c, a)
         elif op == "sync.now": r = mirror_db(c, tok)
         elif op == "buffer.refresh": mirror_buffer(c, tok); r = {"ok": True}
