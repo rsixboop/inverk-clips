@@ -1,9 +1,10 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { Newspaper, Clapperboard, ListOrdered, Library, Link2, Settings, LogOut } from "lucide-react";
+import { Newspaper, Clapperboard, ListOrdered, Library, Link2, Settings, LogOut, Server } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 import { useJobs } from "@/hooks/use-jobs";
+import { VpsBadge } from "@/components/vps/VpsBadge";
 
 const NAV = [
   { to: "/", label: "Студия", icon: Clapperboard },
@@ -11,6 +12,7 @@ const NAV = [
   { to: "/library", label: "Библиотека", icon: Library },
   { to: "/news", label: "GTA VI News", icon: Newspaper },
   { to: "/sources", label: "Источники", icon: Link2 },
+  { to: "/control", label: "VPS", icon: Server },
   { to: "/settings", label: "Настройки", icon: Settings },
 ] as const;
 
@@ -35,6 +37,7 @@ export function AppShell({ children }: { children: (userId: string) => ReactNode
             </Link>
           ))}
         </nav>
+        <VpsBadge />
         <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-2 rounded-md px-2.5 py-2 text-xs text-muted-foreground hover:text-foreground">
           <LogOut className="h-4 w-4" /> <span className="hidden md:inline truncate">{user.email}</span>
         </button>

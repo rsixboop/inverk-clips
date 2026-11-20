@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ControlRouteImport } from './routes/control'
 import { Route as LibraryRouteImport } from './routes/library'
 import { Route as NewsRouteImport } from './routes/news'
 import { Route as QueueRouteImport } from './routes/queue'
@@ -19,6 +20,7 @@ import { Route as SourcesRouteImport } from './routes/sources'
 import { Route as ApiRockstarMediaIdRouteImport } from './routes/api/rockstar-media/$id'
 import { Route as ApiPublicJobsTickRouteImport } from './routes/api/public/jobs/tick'
 import { Route as ApiPublicLiveWorkerRouteImport } from './routes/api/public/live/worker'
+import { Route as ApiPublicVpsAgentRouteImport } from './routes/api/public/vps/agent'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ControlRoute = ControlRouteImport.update({
+  id: '/control',
+  path: '/control',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LibraryRoute = LibraryRouteImport.update({
@@ -70,10 +77,16 @@ const ApiPublicLiveWorkerRoute = ApiPublicLiveWorkerRouteImport.update({
   path: '/api/public/live/worker',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicVpsAgentRoute = ApiPublicVpsAgentRouteImport.update({
+  id: '/api/public/vps/agent',
+  path: '/api/public/vps/agent',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/control': typeof ControlRoute
   '/library': typeof LibraryRoute
   '/news': typeof NewsRoute
   '/queue': typeof QueueRoute
@@ -82,10 +95,12 @@ export interface FileRoutesByFullPath {
   '/api/rockstar-media/$id': typeof ApiRockstarMediaIdRoute
   '/api/public/jobs/tick': typeof ApiPublicJobsTickRoute
   '/api/public/live/worker': typeof ApiPublicLiveWorkerRoute
+  '/api/public/vps/agent': typeof ApiPublicVpsAgentRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/control': typeof ControlRoute
   '/library': typeof LibraryRoute
   '/news': typeof NewsRoute
   '/queue': typeof QueueRoute
@@ -94,11 +109,13 @@ export interface FileRoutesByTo {
   '/api/rockstar-media/$id': typeof ApiRockstarMediaIdRoute
   '/api/public/jobs/tick': typeof ApiPublicJobsTickRoute
   '/api/public/live/worker': typeof ApiPublicLiveWorkerRoute
+  '/api/public/vps/agent': typeof ApiPublicVpsAgentRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/control': typeof ControlRoute
   '/library': typeof LibraryRoute
   '/news': typeof NewsRoute
   '/queue': typeof QueueRoute
@@ -107,12 +124,14 @@ export interface FileRoutesById {
   '/api/rockstar-media/$id': typeof ApiRockstarMediaIdRoute
   '/api/public/jobs/tick': typeof ApiPublicJobsTickRoute
   '/api/public/live/worker': typeof ApiPublicLiveWorkerRoute
+  '/api/public/vps/agent': typeof ApiPublicVpsAgentRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/auth'
+    | '/control'
     | '/library'
     | '/news'
     | '/queue'
@@ -121,10 +140,12 @@ export interface FileRouteTypes {
     | '/api/rockstar-media/$id'
     | '/api/public/jobs/tick'
     | '/api/public/live/worker'
+    | '/api/public/vps/agent'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
+    | '/control'
     | '/library'
     | '/news'
     | '/queue'
@@ -133,10 +154,12 @@ export interface FileRouteTypes {
     | '/api/rockstar-media/$id'
     | '/api/public/jobs/tick'
     | '/api/public/live/worker'
+    | '/api/public/vps/agent'
   id:
     | '__root__'
     | '/'
     | '/auth'
+    | '/control'
     | '/library'
     | '/news'
     | '/queue'
@@ -145,11 +168,13 @@ export interface FileRouteTypes {
     | '/api/rockstar-media/$id'
     | '/api/public/jobs/tick'
     | '/api/public/live/worker'
+    | '/api/public/vps/agent'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthRoute: typeof AuthRoute
+  ControlRoute: typeof ControlRoute
   LibraryRoute: typeof LibraryRoute
   NewsRoute: typeof NewsRoute
   QueueRoute: typeof QueueRoute
@@ -158,6 +183,7 @@ export interface RootRouteChildren {
   ApiRockstarMediaIdRoute: typeof ApiRockstarMediaIdRoute
   ApiPublicJobsTickRoute: typeof ApiPublicJobsTickRoute
   ApiPublicLiveWorkerRoute: typeof ApiPublicLiveWorkerRoute
+  ApiPublicVpsAgentRoute: typeof ApiPublicVpsAgentRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -174,6 +200,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/control': {
+      id: '/control'
+      path: '/control'
+      fullPath: '/control'
+      preLoaderRoute: typeof ControlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/library': {
@@ -232,12 +265,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicLiveWorkerRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/vps/agent': {
+      id: '/api/public/vps/agent'
+      path: '/api/public/vps/agent'
+      fullPath: '/api/public/vps/agent'
+      preLoaderRoute: typeof ApiPublicVpsAgentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthRoute: AuthRoute,
+  ControlRoute: ControlRoute,
   LibraryRoute: LibraryRoute,
   NewsRoute: NewsRoute,
   QueueRoute: QueueRoute,
@@ -246,6 +287,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiRockstarMediaIdRoute: ApiRockstarMediaIdRoute,
   ApiPublicJobsTickRoute: ApiPublicJobsTickRoute,
   ApiPublicLiveWorkerRoute: ApiPublicLiveWorkerRoute,
+  ApiPublicVpsAgentRoute: ApiPublicVpsAgentRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

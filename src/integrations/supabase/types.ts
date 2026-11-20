@@ -767,6 +767,163 @@ export type Database = {
         }
         Relationships: []
       }
+      vps_agents: {
+        Row: {
+          agent_version: string | null
+          id: string
+          info: Json
+          last_seen_at: string | null
+          last_server_ts: string | null
+          name: string
+          paired_at: string
+          revoked_at: string | null
+          services: Json
+          token_hash: string
+          user_id: string
+        }
+        Insert: {
+          agent_version?: string | null
+          id?: string
+          info?: Json
+          last_seen_at?: string | null
+          last_server_ts?: string | null
+          name?: string
+          paired_at?: string
+          revoked_at?: string | null
+          services?: Json
+          token_hash: string
+          user_id: string
+        }
+        Update: {
+          agent_version?: string | null
+          id?: string
+          info?: Json
+          last_seen_at?: string | null
+          last_server_ts?: string | null
+          name?: string
+          paired_at?: string
+          revoked_at?: string | null
+          services?: Json
+          token_hash?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      vps_commands: {
+        Row: {
+          agent_id: string
+          args: Json
+          created_at: string
+          done_at: string | null
+          error: string | null
+          id: string
+          idem_key: string
+          op: string
+          result: Json | null
+          sent_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          agent_id: string
+          args?: Json
+          created_at?: string
+          done_at?: string | null
+          error?: string | null
+          id?: string
+          idem_key: string
+          op: string
+          result?: Json | null
+          sent_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          agent_id?: string
+          args?: Json
+          created_at?: string
+          done_at?: string | null
+          error?: string | null
+          id?: string
+          idem_key?: string
+          op?: string
+          result?: Json | null
+          sent_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vps_commands_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "vps_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vps_mirror: {
+        Row: {
+          agent_id: string
+          data: Json
+          kind: string
+          row_key: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          agent_id: string
+          data: Json
+          kind: string
+          row_key: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          agent_id?: string
+          data?: Json
+          kind?: string
+          row_key?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vps_mirror_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "vps_agents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vps_pairings: {
+        Row: {
+          code_hash: string
+          created_at: string
+          expires_at: string
+          id: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          code_hash: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          code_hash?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

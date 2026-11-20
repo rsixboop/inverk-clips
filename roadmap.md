@@ -18,3 +18,5 @@
 - [x] Replace denied fal ffmpeg-api in the story route (extract-nth-frame, scale-video, in-Worker remux) + capability preflight; resume job 50e227d5
 - [ ] Move compose/clip routes off fal ffmpeg-api (blocked by preflight until then)
 - [ ] Review first automatic story video and tune calibration from feedback (waiting on user review)
+- [x] VPS: paired outbound agent + /control (archive, interval, services, Buffer read-only, history)
+- [ ] VPS real install check — waits on user running the installer on the Debian VPS
