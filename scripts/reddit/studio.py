@@ -1,4 +1,6 @@
 """Run with python3 studio.py. Open localhost:8765 through an SSH tunnel."""
+import publishing
+import re
 import html
 import json
 import os
@@ -20,6 +22,7 @@ def connect():
 
 def initialize():
     with connect() as db:
+        publishing.initialize(db)
         db.executescript("""
         CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY, enabled INTEGER, minutes INTEGER);
         INSERT OR IGNORE INTO settings VALUES(1,0,30);
@@ -59,6 +62,11 @@ def worker():
                 message = f"Сбор остановился на этом проходе: {exc}"
             with connect() as db:
                 db.execute("INSERT INTO events VALUES(?,?)", (int(time.time()), message))
+        try:
+            with connect() as db:
+                publishing.tick(db)
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            print("Очередь публикаций:", type(exc).__name__, flush=True)
         time.sleep(5)
 
 
@@ -68,15 +76,22 @@ class Panel(BaseHTTPRequestHandler):
             return self.send_error(404)
         with connect() as db:
             enabled, minutes = db.execute("SELECT enabled,minutes FROM settings").fetchone()
+            channels = db.execute("SELECT profile,enabled,hours FROM channels ORDER BY profile").fetchall()
+            deliveries = db.execute("SELECT profile,episode,status FROM deliveries ORDER BY updated DESC LIMIT 30").fetchall()
             rows = db.execute("SELECT community,title FROM stories ORDER BY seen DESC,rowid DESC LIMIT 50").fetchall()
             events = db.execute("SELECT datetime(at,'unixepoch'),message FROM events ORDER BY rowid DESC LIMIT 10").fetchall()
         def listing(items):
             return "".join("<li>" + html.escape(" · ".join(row)) + "</li>" for row in items)
+        def profile_form(name="", enabled=False, hours=24):
+            return f'<form method="post"><input type="hidden" name="action" value="channel"><input required name="profile" placeholder="Профиль Upload-Post" value="{html.escape(name, quote=True)}"><label> каждые <input name="hours" type="number" min="1" max="168" value="{hours}"> ч </label><label><input type="checkbox" name="enabled" {"checked" if enabled else ""}> Автопубликация</label> <button>Сохранить</button></form>'
         page = f"""<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width"><title>Reddit · Inverk Clips</title>
         <style>body{{font:16px system-ui;max-width:840px;margin:4vh auto;padding:1em;background:#fafaf6;color:#152b22}}li{{margin:.65em 0}}input,button{{padding:.5em}}</style>
         <h1>Reddit · GTA VI</h1><form method=post><label><input name=enabled type=checkbox {'checked' if enabled else ''}> Сбор включён</label>
         <label>Интервал, мин <input name=minutes type=number min=5 max=1440 value={minutes} required></label>
-        <button>Сохранить</button></form><h2>Последние действия (UTC)</h2><ul>{listing(events)}</ul><h2>Темы и сообщества</h2><ul>{listing(rows)}</ul>"""
+        <button>Сохранить</button></form><h2>TikTok-аккаунты</h2><a href="https://www.upload-post.com/">Подключить TikTok через Upload-Post</a>
+        <p>API публикации: {"ключ задан" if os.getenv("UPLOAD_POST_API_KEY") else "требуется ключ"}</p>
+        {"".join(profile_form(*row) for row in channels)}{profile_form()}
+        <h2>Отправки</h2><ul>{listing(deliveries)}</ul><h2>Последние действия (UTC)</h2><ul>{listing(events)}</ul><h2>Темы и сообщества</h2><ul>{listing(rows)}</ul>"""
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
@@ -91,6 +106,19 @@ class Panel(BaseHTTPRequestHandler):
             if not 0 < length < 512:
                 raise ValueError()
             data = urllib.parse.parse_qs(self.rfile.read(length).decode())
+            if data.get("action") == ["channel"]:
+                profile = data["profile"][0].strip()
+                hours = int(data["hours"][0])
+                if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", profile) or not 1 <= hours <= 168:
+                    raise ValueError()
+                with connect() as db:
+                    db.execute("""INSERT INTO channels VALUES(?,?,?,0) ON CONFLICT(profile)
+                        DO UPDATE SET enabled=excluded.enabled,hours=excluded.hours""",
+                        (profile,"enabled" in data,hours))
+                self.send_response(303)
+                self.send_header("Location","/")
+                self.end_headers()
+                return
             minutes = int(data["minutes"][0])
             if not 5 <= minutes <= 1440:
                 raise ValueError()
