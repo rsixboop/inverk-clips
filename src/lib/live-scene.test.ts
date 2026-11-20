@@ -9,3 +9,16 @@ describe("live scene rules", () => {
     expect(detectSwitch("Rust", normalizeScene({ game: null, activity: "chatting", confidence: 0.9 }))).toBeNull();
   });
 });
+
+import { trackGame, type GameTrack } from "./live-scene";
+it("keeps five independent streams stable through alternating guesses", () => {
+  for (const game of ["GTA VI", "Rust", "GTA V", "Alan Wake", "Minecraft"]) {
+    let track: GameTrack | undefined;
+    const readings = [game, game, game, "Watch Dogs", game, "Watch Dogs", game, "Portal", "Portal", "Portal"];
+    const names = readings.map((name, i) => {
+      track = trackGame(track, { game: name, activity: "gameplay", confidence: 0.95 }, i * 60000);
+      return track.game;
+    });
+    expect(names).toEqual([null, null, game, game, game, game, game, game, game, "Portal"]);
+  }
+});

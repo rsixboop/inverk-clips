@@ -25,6 +25,17 @@ export const addMonitor = createServerFn({ method: "POST" }).middleware([require
     return row;
   });
 
+/** Switch an existing monitor's media mode in place; peaks already found stay as they are. */
+export const setMediaMode = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid(), media_mode: z.enum(["timestamp_only", "recorder"]), rights: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    if (data.media_mode === "recorder" && !data.rights) throw new Error("Запись только для своего эфира или с разрешением правообладателя — подтвердите права");
+    const { error } = await (await admin()).from("live_monitors").update({ media_mode: data.media_mode, ...(data.media_mode === "recorder" ? { rights_confirmed: true } : {}) })
+      .eq("id", data.id).eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const monitorAction = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((d: unknown) => z.object({ id: z.string().uuid(), action: z.enum(["start", "stop"]) }).parse(d))
   .handler(async ({ data, context }) => {
     const db = await admin();
@@ -54,6 +65,54 @@ export const highlightUrl = createServerFn({ method: "POST" }).middleware([requi
     const { data: h } = await context.supabase.from("live_highlights").select("output_path").eq("id", data.id).maybeSingle();
     if (!h?.output_path) throw new Error("Клип ещё не готов");
     const { data: s, error } = await (await admin()).storage.from("outputs").createSignedUrl(h.output_path, 3600, { download: true });
+    if (error) throw new Error(error.message);
+    return { url: s.signedUrl };
+  });
+
+// "Следить и клипать вкладку": the user's own Chrome tab capture uploads cut highlights for a monitor.
+const CLAIMABLE = ["timestamp_only", "awaiting_media"];
+export const captureClaim = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const db = await admin();
+    const { data: h } = await db.from("live_highlights").select("id,status,attempts").eq("id", data.id).eq("user_id", context.userId).maybeSingle();
+    if (!h || !CLAIMABLE.includes(h.status)) return { skip: h?.status ?? "missing" }; // dedup: done/claimed elsewhere
+    const claim = crypto.randomUUID(), path = `${context.userId}/live/${h.id}.mp4`;
+    const { data: ok } = await db.from("live_highlights").update({ status: "claimed", claim, claim_until: new Date(Date.now() + 10 * 60_000).toISOString(), attempts: h.attempts + 1, output_path: path, detail: "вкладка Chrome: загрузка клипа" })
+      .eq("id", h.id).eq("status", h.status).select("id").maybeSingle();
+    if (!ok) return { skip: "claimed" };
+    const { data: up, error } = await db.storage.from("outputs").createSignedUploadUrl(path, { upsert: true });
+    if (error || !up) { await db.from("live_highlights").update({ status: h.status, claim: null }).eq("id", h.id); throw new Error(error?.message ?? "upload url"); }
+    return { claim, path, token: up.token, prev: h.status };
+  });
+
+export const captureFinish = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid(), claim: z.string().uuid(), ok: z.boolean(), prev: z.enum(["timestamp_only", "awaiting_media"]), duration_s: z.number().min(0).max(600).optional(), error: z.string().max(300).optional(), final: z.boolean().optional() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const db = await admin();
+    const { data: h } = await db.from("live_highlights").select("*").eq("id", data.id).eq("user_id", context.userId).eq("claim", data.claim).eq("status", "claimed").maybeSingle();
+    if (!h) throw new Error("Клип уже обработан другим процессом");
+    if (!data.ok) {
+      await db.from("live_highlights").update({ status: data.final ? "unavailable" : data.prev, claim: null, claim_until: null, detail: `вкладка Chrome: ${data.error ?? "ошибка"}` }).eq("id", h.id);
+      return { ok: false };
+    }
+    const { finalizeHighlight } = await import("@/server/live-worker.server");
+    const r = await finalizeHighlight(db, context.userId, h, "tab", data.duration_s);
+    if ("error" in r) throw new Error(`Сервер отклонил MP4: ${r.error}`);
+    return { ok: true, job_id: r.job_id };
+  });
+
+/** Revoke every recorder token of the caller (only hashes are stored; running recorders get 401 and ask for a new one). */
+export const revokeWorkerTokens = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
+  const { data, error } = await (await admin()).from("live_workers").delete().eq("user_id", context.userId).select("id");
+  if (error) throw new Error(error.message);
+  return { revoked: data?.length ?? 0 };
+});
+
+export const candidateUrl = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: c } = await context.supabase.from("local_candidates").select("output_path").eq("id", data.id).maybeSingle();
+    if (!c?.output_path) throw new Error("Клип ещё не готов");
+    const { data: s, error } = await (await admin()).storage.from("outputs").createSignedUrl(c.output_path, 3600);
     if (error) throw new Error(error.message);
     return { url: s.signedUrl };
   });

@@ -52,7 +52,7 @@ async function youtubeStep(m: Monitor): Promise<{ patch: Patch; events: ChatEven
   try {
     const r = await yt("liveChat/messages", q);
     const events: ChatEvent[] = (r.items ?? []).filter((i: any) => i.snippet?.type === "textMessageEvent" || i.snippet?.type === "superChatEvent")
-      .map((i: any) => ({ ts: Date.parse(i.snippet.publishedAt), author: i.authorDetails?.channelId ?? i.snippet.authorChannelId, emotes: countYoutubeEmotes(i.snippet.displayMessage ?? "") }));
+      .map((i: any) => ({ ts: Date.parse(i.snippet.publishedAt), author: i.authorDetails?.channelId ?? i.snippet.authorChannelId, emotes: countYoutubeEmotes(i.snippet.displayMessage ?? ""), text: i.snippet.displayMessage ?? "" }));
     if (r.offlineAt) return { patch: { status: "offline", status_detail: "Эфир завершён", live_chat_id: null, page_token: null, next_poll_at: iso(OFFLINE_RECHECK_MS) }, events, continuous: true };
     // Respect the API's pollingIntervalMillis (never faster than 5s).
     return { patch: { status: "live", status_detail: `Чат: ${events.length} сообщ. за опрос`, page_token: r.nextPageToken ?? m.page_token, next_poll_at: iso(Math.max(5000, Number(r.pollingIntervalMillis) || 5000)) }, events, continuous: true };
@@ -86,7 +86,8 @@ export function sampleTwitchChat(login: string, ms: number): Promise<{ events: C
         else if (line.includes(" PRIVMSG #")) {
           const tags = Object.fromEntries(line.slice(1, line.indexOf(" ")).split(";").map((kv) => kv.split("=") as [string, string]));
           const author = tags["user-id"] || line.split("!")[0]!; const ts = Number(tags["tmi-sent-ts"]) || Date.now();
-          events.push({ ts, author, emotes: countTwitchEmotes(tags["emotes"]) });
+          const text = line.slice(line.indexOf(" :", line.indexOf(" PRIVMSG #")) + 2);
+          events.push({ ts, author, emotes: countTwitchEmotes(tags["emotes"]), text });
         }
       }
     });

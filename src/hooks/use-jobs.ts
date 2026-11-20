@@ -16,7 +16,7 @@ export function useJobs(enabled: boolean, drive = false) {
     queryFn: async () => {
       const { data, error } = await supabase.from("jobs").select("*").order("created_at", { ascending: false }).limit(50);
       if (error) throw error;
-      return data as Job[];
+      return (data as Job[]).map(job => job.status === "completed" ? { ...job, status: "succeeded" } : job);
     },
   });
   // Drive the pipeline while something is active: ~5s, back off on error, stop when idle.
