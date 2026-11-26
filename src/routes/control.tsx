@@ -42,6 +42,7 @@ function Control() {
 
   if (!agent) return <div className="mx-auto max-w-xl space-y-4"><h1 className="text-base font-bold">VPS</h1><Pairing /></div>;
   const services = Object.entries((agent.services ?? {}) as Record<string, ServiceInfo>);
+  const workloads = (agent.info as { workloads?: Record<string, { memory_mib: number; cpu_percent: number | null }> } | null)?.workloads;
   const stories = mirror.filter((r) => r.kind === "stories");
   const settings = mirror.find((r) => r.kind === "settings")?.data as { enabled: boolean; minutes: number } | undefined;
   const chans = mirror.filter((r) => r.kind === "buffer:channels");
@@ -53,6 +54,21 @@ function Control() {
       <div className="flex flex-wrap items-center justify-between gap-2"><h1 className="text-base font-bold">VPS · {agent.name}</h1><VpsBadge /></div>
       <p className="font-mono text-[11px] text-muted-foreground">агент {agent.agent_version || "?"} · сигнал {fmt(agent.last_seen_at)} · подтверждённое время сервера {fmt(agent.last_server_ts)} · база {(agent.info as any)?.db ? "есть" : "не найдена"} · buffer.key {(agent.info as any)?.buffer_key ? "есть" : "нет"}</p>
       {st === "stale" && <p className="text-sm text-warning">Нет сигнала больше 75 с. Команды подождут и выполнятся, когда агент вернётся.</p>}
+
+      <Section title="Нагрузка на VPS">
+        <table className="w-full text-left text-sm tabular-nums">
+          <thead className="text-xs text-muted-foreground"><tr><th>Приложение</th><th>CPU · % VPS</th><th>Память</th></tr></thead>
+          <tbody>{Object.entries({ phil: "Фил", clips: "Нарезчик" }).map(([key, label]) => {
+            const sample = workloads?.[key];
+            return <tr key={key} className="border-t border-border">
+              <th scope="row" className="py-2 text-left font-medium">{label}</th>
+              <td>{sample?.cpu_percent == null ? "—" : sample.cpu_percent.toLocaleString("ru-RU") + " %"}</td>
+              <td>{sample ? sample.memory_mib.toLocaleString("ru-RU") + " МиБ" : "—"}</td>
+            </tr>;
+          })}</tbody>
+        </table>
+        <p className="text-xs text-muted-foreground">Последний замер · {fmt(agent.last_seen_at)}. Прочерк означает, что данных нет.</p>
+      </Section>
 
       <Section title="Службы и рекордер">
         {!services.length && <p className="text-sm text-muted-foreground">Агент не нашёл служб inverk*.</p>}

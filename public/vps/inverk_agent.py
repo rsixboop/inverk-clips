@@ -9,7 +9,9 @@ Stdlib only.
 """
 import json, os, re, sqlite3, subprocess, sys, time, urllib.request, urllib.error, urllib.parse
 
-VERSION = "1.1"
+from pathlib import Path
+
+VERSION = "1.2"
 CONF_DIR = os.environ.get("INVERK_AGENT_CONF", "/etc/inverk-agent")
 STATE_DIR = os.environ.get("INVERK_AGENT_STATE", "/var/lib/inverk-agent")
 DEFAULTS = {"server": "https://inverk-clips.lovable.app", "db": "/var/lib/inverk-studio/reddit-studio.sqlite3",
@@ -125,6 +127,40 @@ def units(c):
     except Exception: pass
     return sorted({u for u in us if u != "inverk-agent.service"})
 
+def workload_usage(previous, root=Path("/sys/fs/cgroup/system.slice")):
+    """Read service cgroups, including their Chromium and FFmpeg children."""
+    now = time.monotonic()
+    cores = os.cpu_count() or 1
+    result = {}
+    current = {}
+    for label, pattern in (("phil", "phil-*.service"), ("clips", "inverk*.service")):
+        try:
+            groups = [g for g in root.glob(pattern) if g.name != "inverk-agent.service"]
+            if not groups:
+                continue
+            memory = 0
+            cpu = 0.0
+            complete = True
+            for group in groups:
+                key = (group.name, group.stat().st_ino)
+                memory += int((group / "memory.current").read_text())
+                fields = dict(line.split() for line in (group / "cpu.stat").read_text().splitlines())
+                usage = int(fields["usage_usec"])
+                current[key] = (now, usage)
+                if key in previous:
+                    start, last = previous[key]
+                    if now > start and usage >= last:
+                        cpu += (usage - last) / ((now - start) * 10000 * cores)
+                        continue
+                complete = False
+            result[label] = {"memory_mib": round(memory / 1048576),
+                             "cpu_percent": round(cpu, 1) if complete else None}
+        except (OSError, ValueError, KeyError):
+            continue
+    previous.clear()
+    previous.update(current)
+    return result
+
 def services(c):
     res = {}
     for u in units(c):
@@ -215,12 +251,14 @@ def run_op(c, tok, cmd, st):
 def main_loop():
     c = conf(); tok = token()
     if not tok: sys.exit("not paired: run  inverk-agent pair <CODE>")
+    previous_usage = {}
     st = load_state(); last_ts = st.get("last_server_ts"); next_db = 0; next_buf = 0; mtime = None
     log("agent", VERSION, "->", c["server"])
     while True:
         t0 = time.time()
         try:
             info = {"db": os.path.exists(c["db"]), "buffer_key": os.path.exists(c["buffer_key"]), "host": os.uname().nodename}
+            info["workloads"] = workload_usage(previous_usage)
             r = call(c, {"action": "heartbeat", "version": VERSION, "last_server_ts": last_ts, "services": services(c), "info": info}, tok)
             last_ts = r.get("server_ts"); st["last_server_ts"] = last_ts; save_state(st)
             for cmd in r.get("commands", []):
