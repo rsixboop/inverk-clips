@@ -48,7 +48,47 @@ async function inspectClip(id:string, source:string) {
     return {...await describeClipFrames({data:{frames}}),duration,frames:count,audio_analyzed:false};
   } finally {video.removeAttribute("src");video.load();}
 }
+async function transcribeClip(id:string,source:string,owner:string) {
+  if (!["live","local"].includes(source) || !/^[a-f0-9-]{36}$/i.test(id)) throw Error("Invalid clip identifier");
+  const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode([owner,source,id,"dialogue-v1"].join("/")));
+  const batch=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,"0")).join("");
+  let state=await alignNewsSpeech({data:{batch}});
+  if(state.status==="need_audio"){
+    const {url}=await (source==="live"?highlightUrl:candidateUrl)({data:{id}});
+    const res=await fetch(url,{signal:AbortSignal.timeout(60000)});
+    if(!res.ok) throw Error("Could not download clip audio");
+    const rate=16000;
+    const decoder=new OfflineAudioContext(1,1,rate);
+    const decoded=await decoder.decodeAudioData(await res.arrayBuffer());
+    if(decoded.duration>180) throw Error("Dialogue analysis supports clips up to three minutes");
+    const renderer=new OfflineAudioContext(1,decoded.length,rate);
+    const track=renderer.createBufferSource();
+    track.buffer=decoded;
+    track.connect(renderer.destination);
+    track.start();
+    const samples=(await renderer.startRendering()).getChannelData(0);
+    const wav=new Uint8Array(44+samples.length*2);
+    const view=new DataView(wav.buffer);
+    const tag=(at:number,s:string)=>wav.set(new TextEncoder().encode(s),at);
+    tag(0,"RIFF");view.setUint32(4,wav.length-8,true);tag(8,"WAVE");tag(12,"fmt ");
+    view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);
+    view.setUint32(24,rate,true);view.setUint32(28,rate*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);
+    tag(36,"data");view.setUint32(40,wav.length-44,true);
+    for(let i=0;i<samples.length;i++) view.setInt16(44+i*2,Math.round(Math.max(-1,Math.min(1,samples[i]??0))*32767),true);
+    const parts:string[]=[];
+    for(let i=0;i<wav.length;i+=16384) parts.push(String.fromCharCode(...wav.subarray(i,i+16384)));
+    state=await alignNewsSpeech({data:{batch,audio:btoa(parts.join("")),mime:"audio/wav"}});
+  }
+  for(let attempt=0;state.status==="pending" && attempt<30;attempt++){
+    await new Promise(resolve=>setTimeout(resolve,3000));
+    state=await alignNewsSpeech({data:{batch}});
+  }
+  if(state.status==="pending") throw Error("Recognition still running; call transcribeClip again for the same clip to collect the existing job");
+  if(state.status!=="done") throw Error("message" in state ? String(state.message) : "Transcription unavailable");
+  return {words:state.words,speakers_identified:false};
+}
 async function execute(operation: string, data: Record<string,any>, owner: string) {
+  if (operation === 'transcribeClip') return transcribeClip(data['id'],data['source'],owner);
   if (operation === 'inspectClip') return inspectClip(data['id'],data['source']);
   if (Object.hasOwn(actions, operation)) {
     const call = actions[operation as keyof typeof actions] as (input:any)=>Promise<unknown>;
