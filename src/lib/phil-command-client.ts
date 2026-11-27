@@ -8,7 +8,7 @@ import { submitNewsVoice, pollNewsVoice } from "./news-voice.functions";
 import { enqueueVpsOp } from "./vps.functions";
 const actions = { tickJobs, providerStatus, createJob, jobAction, selectCandidates, pickClip, getOutputUrl, addUrlSource, saveStoryFeedback, setJobBudget, liveStatus, addMonitor, setMediaMode, monitorAction, tickLive, highlightUrl, candidateUrl, resolveNewsOverlay, alignNewsSpeech, findNewswire, scriptFromArticle, findGtaNews, submitNewsVoice, pollNewsVoice, enqueueVpsOp };
 const db = supabase as any;
-async function inspectClip(id:string, source:string) {
+async function inspectClip(id:string, source:string, owner:string) {
   if (source !== "live" && source !== "local") throw Error("Expected source live or local");
   const {url} = await (source==="live" ? highlightUrl : candidateUrl)({data:{id}});
   const video = document.createElement("video");
@@ -32,20 +32,27 @@ async function inspectClip(id:string, source:string) {
     const duration=video.duration;
     if (!Number.isFinite(duration) || duration<=0 || !video.videoWidth) throw Error("Invalid MP4");
     const canvas=document.createElement("canvas");
-    const scale=Math.min(1,640/Math.max(video.videoWidth,video.videoHeight));
+    const scale=Math.min(1,1080/Math.max(video.videoWidth,video.videoHeight));
     canvas.width=Math.max(1,Math.round(video.videoWidth*scale));
     canvas.height=Math.max(1,Math.round(video.videoHeight*scale));
     const context=canvas.getContext("2d");
     if (!context) throw Error("Canvas unavailable");
-    const count=Math.min(10,Math.max(1,Math.ceil(duration/8)));
+    const count=Math.min(32,Math.max(1,Math.ceil(duration/3)));
     const frames=[];
     for(let i=0;i<count;i++){
       const second=(i+0.5)*duration/count;
       await waitFor("seeked",()=>{video.currentTime=second;});
       context.drawImage(video,0,0,canvas.width,canvas.height);
-      frames.push({second,jpeg:canvas.toDataURL("image/jpeg",0.65)});
+      let jpeg=canvas.toDataURL("image/jpeg",0.74);
+      if(jpeg.length>240000) jpeg=canvas.toDataURL("image/jpeg",0.42);
+      frames.push({second,jpeg});
     }
-    return {...await describeClipFrames({data:{frames}}),duration,frames:count,audio_analyzed:false};
+    let speech="";
+    try {
+      const audio=await transcribeClip(id,source,owner);
+      speech=(audio.words??[]).map(w=>Math.round(w.start)+"s "+w.word).join(" ").slice(0,16000);
+    } catch { /* Visual evidence remains available if audio is inaccessible. */ }
+    return {...await describeClipFrames({data:{frames,speech}}),duration,frames:count,audio_analyzed:Boolean(speech)};
   } finally {video.removeAttribute("src");video.load();}
 }
 async function transcribeClip(id:string,source:string,owner:string) {
@@ -89,7 +96,7 @@ async function transcribeClip(id:string,source:string,owner:string) {
 }
 async function execute(operation: string, data: Record<string,any>, owner: string) {
   if (operation === 'transcribeClip') return transcribeClip(data['id'],data['source'],owner);
-  if (operation === 'inspectClip') return inspectClip(data['id'],data['source']);
+  if (operation === 'inspectClip') return inspectClip(data['id'],data['source'],owner);
   if (Object.hasOwn(actions, operation)) {
     const call = actions[operation as keyof typeof actions] as (input:any)=>Promise<unknown>;
     return call({data});
