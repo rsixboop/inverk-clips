@@ -1,4 +1,5 @@
 export const operations: Record<string,string> = {
+  transcribeClip: 'Transcribe the actual audio of a ready MP4 up to 180s. Input {id: UUID, source: live or local}. Returns timestamped words from mixed game and stream audio. Speaker identity is unverified.',
   inspectClip: 'Describe real sampled frames of a ready MP4. Input {id: clip UUID, source: live for live_highlights or local for local_candidates}. Returns timestamped visual description without audio.',
   "tickJobs": "{}",
   "providerStatus": "{}",
