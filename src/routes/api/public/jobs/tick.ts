@@ -12,6 +12,7 @@ export const Route = createFileRoute("/api/public/jobs/tick")({
         const authFailure = await authenticateCronRequest(request);
         if (authFailure) return authFailure;
         const [processed, live] = await Promise.all([drainJobs(4_000), drainLive(8_000)]);
+        // Full analysis drain runs only in deployed waitUntil; avoid slow inference in the fallback.
         return Response.json({ processed, live });
       },
     },

@@ -11,7 +11,7 @@ Windows: start inverk-recorder.bat (downloaded from Sources). Others: INVERK_URL
 """
 import base64, calendar, csv, getpass, glob, json, os, shutil, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 
-VERSION = "2.4"
+VERSION = "2.5"
 SEG, PRE, POST = 10, 20, 15
 KEEP_S = int(os.environ.get("INVERK_KEEP_SECONDS", "900"))
 IS_WIN = os.name == "nt"
@@ -24,6 +24,9 @@ FFMPEG = STREAMLINK = None
 procs = {}   # monitor id -> Session
 errors = {}  # monitor id -> last capture error
 retry_at, fails = {}, {}  # reconnect backoff per monitor
+stop_event = threading.Event()
+monitor_cache = {}
+last_api_error = None
 done = set() # highlight ids already uploaded in this run (server also dedups by claim + idempotency key)
 
 # ---------- configuration & tools ----------
@@ -43,11 +46,13 @@ def configure():
     APP = (os.environ.get("INVERK_URL") or c.get("url") or "").rstrip("/")
     TOKEN = os.environ.get("INVERK_WORKER_TOKEN") or c.get("token") or ""
     if "--reset-token" in sys.argv: TOKEN = ""
+    if not sys.stdin.isatty() and (not APP or not (TOKEN.startswith("lrw_") and len(TOKEN) == 68)):
+        sys.exit("config: service requires INVERK_URL and an lrw recorder token or a readable saved config; VPS agent pairing is a separate credential")
     if not APP: APP = input("Адрес приложения (https://...): ").strip().rstrip("/")
     while not (TOKEN.startswith("lrw_") and len(TOKEN) == 68):
         TOKEN = getpass.getpass("Вставьте токен рекордера из «Источники» (ввод скрыт) и нажмите Enter: ").strip()
         if not (TOKEN.startswith("lrw_") and len(TOKEN) == 68): print("Это не токен рекордера (должен начинаться с lrw_). Попробуйте ещё раз.")
-    if api("monitors").get("error", "").startswith("401"):
+    if "HTTP 401" in api("monitors").get("error", ""):
         save_cfg({**c, "url": APP, "token": ""}); sys.exit("Токен не принят приложением. Создайте новый в «Источники» и запустите снова.")
     save_cfg({**c, "url": APP, "token": TOKEN})
 
@@ -71,15 +76,15 @@ def find_tools():
     if not STREAMLINK: sys.exit("Не найден Streamlink. Установите: https://streamlink.github.io/install.html (или INVERK_STREAMLINK=путь\\streamlink.exe).")
     print(f"ffmpeg: {FFMPEG}\nstreamlink: {STREAMLINK}", flush=True)
 
-UA = "inverk-recorder/2.3.2"  # default Python-urllib UA is blocked (403 / error code 1010) by the storage edge
+UA = "inverk-recorder/2.5"  # default Python-urllib UA is blocked (403 / error code 1010) by the storage edge
 _re_tok = __import__("re").compile(r"token=[^&\s\"']+")
 def api(action, **kw):
     req = urllib.request.Request(f"{APP}/api/public/live/worker", data=json.dumps({"action": action, **kw}).encode(),
                                  headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json", "User-Agent": UA}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=60) as r: return json.load(r)
-    except urllib.error.HTTPError as e: return {"error": f"{e.code} {e.read()[:200].decode('utf-8', 'replace')}"}
-    except Exception as e: return {"error": f"network {e}"}
+    except urllib.error.HTTPError as e: return {"error": sanitize(f"api/{action}: HTTP {e.code} {e.read()[:200].decode('utf-8', 'replace')}")}
+    except Exception as e: return {"error": sanitize(f"api/{action}: network {e}")}
 
 # ---------- buffer index (pure, unit-tested) ----------
 def read_index(session_dir):
@@ -225,12 +230,32 @@ def probe_quality(path):
     return f"{m.group(1)}x{m.group(2)} {float(m.group(3)):g}fps" if m else None
 quality = {}
 
+def utc(t): return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+
+def should_capture(m, paused=False, existing=False, now=None):
+    if paused or not m.get("enabled", True) or m.get("archived_at") or m.get("media_mode") != "recorder" or not m.get("record_url"): return False
+    if "capture_eligible" not in m: return m.get("status") == "live"  # old server compatibility
+    if m["capture_eligible"]: return True
+    # Brief unknown API observation retains an already running buffer, never starts a new one.
+    return bool(existing and m.get("observation") == "unknown" and m.get("observed_at") and (now or time.time()) - iso_ts(m["observed_at"]) < 300)
+
+def monitor_loop():
+    while not stop_event.is_set():
+        try: sync_monitors()
+        except Exception as e: print("monitor:", sanitize(str(e)), flush=True)
+        stop_event.wait(10)
+
 def sync_monitors():
+    global monitor_cache, last_api_error
     r = api("monitors"); ms = r.get("monitors", [])
-    if r.get("error", "").startswith("401"):  # token revoked in Sources: forget it and ask for a new one on next start
-        save_cfg({**load_cfg(), "token": ""}); raise SystemExit("Токен отозван или неверен. Создайте новый в «Источники» и запустите рекордер снова.")
-    if r.get("error"): print("ошибка API:", sanitize(r["error"]), flush=True)
-    live = {m["id"]: m for m in ms if m["media_mode"] == "recorder" and m["status"] == "live" and m.get("record_url")}
+    if "HTTP 401" in r.get("error", ""):  # token revoked in Sources: forget it and ask for a new one on next start
+        save_cfg({**load_cfg(), "token": ""}); stop_event.set(); raise SystemExit("Токен отозван или неверен. Создайте новый в «Источники» и запустите рекордер снова.")
+    if r.get("error"):
+        last_api_error = r["error"]; print("ошибка API:", sanitize(last_api_error), flush=True)
+        # Failed API reads are not offline. Keep capture alive; do not start unknown channels.
+        return monitor_cache
+    last_api_error = None
+    live = {m["id"]: m for m in ms if should_capture(m, bool(r.get("paused")), m["id"] in procs)}
     for mid, s in list(procs.items()):
         if mid not in live or not s.alive() or live[mid]["record_url"] != s.url:
             quality.pop(mid, None)
@@ -255,9 +280,10 @@ def sync_monitors():
         if buf > SEG: fails[m["id"]] = 0
         if tail and m["id"] not in quality: quality[m["id"]] = probe_quality(tail[0][0])
         err = None if (s and s.alive()) else errors.get(m["id"]) or ("Эфир не идёт — запись не ведётся" if m["status"] != "live" else "Нет ссылки на эфир")
-        states.append({"id": m["id"], "buffer_s": round(buf, 1), "quality": quality.get(m["id"]) if s else None, "ready": bool(s and s.alive() and buf >= PRE + SEG), "error": err})
+        states.append({"id": m["id"], "capture_state": "buffering" if s and s.alive() else "backoff" if retry_at.get(m["id"], 0) > now else "idle", "last_segment_at": utc(tail[-1][2]) if tail else None, "retry_at": utc(retry_at[m["id"]]) if retry_at.get(m["id"], 0) > now else None, "error_stage": "capture" if err else None, "buffer_s": round(buf, 1), "quality": quality.get(m["id"]) if s else None, "ready": bool(s and s.alive() and buf >= PRE + SEG), "error": err})
     api("status", monitors=states, version=VERSION, tools=f"streamlink+ffmpeg ({'Windows' if IS_WIN else sys.platform})")
-    return {m["id"]: m for m in ms}
+    monitor_cache = {m["id"]: m for m in ms}
+    return monitor_cache
 
 # ---------- cutting ----------
 VERT = ("[0:v]split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=24:2,eq=brightness=-0.08[bg];"
@@ -658,6 +684,43 @@ def event_loop():
                 if r and r.get("keep"): print("игровое событие", mid[:8], r.get("reason"), flush=True)
             except Exception as e: print("event error", sanitize(str(e)), flush=True)
 
+
+def analyze_file(item):
+    """Decode the exact finalized stored MP4, not an older buffer frame; bounded independent analysis thread."""
+    with tempfile.TemporaryDirectory() as t:
+        path = os.path.join(t, "clip.mp4")
+        req = urllib.request.Request(item["url"], headers={"User-Agent": UA})
+        with urllib.request.urlopen(req, timeout=60) as response, open(path, "wb") as out:
+            size = 0
+            while True:
+                b = response.read(65536)
+                if not b: break
+                size += len(b)
+                if size > 120 * 1024 * 1024: raise NoMedia("analysis/download: MP4 exceeds size cap")
+                out.write(b)
+        duration = probe(path)
+        if not duration or duration > 180: raise NoMedia("analysis/decode: invalid MP4 or longer than 180s")
+        wav = os.path.join(t, "audio.wav")
+        subprocess.run([FFMPEG, "-loglevel", "error", "-y", "-i", path, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav], check=True, capture_output=True, timeout=120, creationflags=NOWIN)
+        frames = []
+        for i in range(8):
+            second = (i + .5) * duration / 8
+            jpg = subprocess.run([FFMPEG, "-loglevel", "error", "-ss", str(second), "-i", path, "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "8", "-f", "image2", "pipe:1"], capture_output=True, timeout=30, creationflags=NOWIN).stdout
+            if jpg and len(jpg) < 170000: frames.append({"second": round(second, 3), "jpeg": "data:image/jpeg;base64," + base64.b64encode(jpg).decode()})
+        with open(wav, "rb") as f: audio = base64.b64encode(f.read()).decode()
+        r = api("analysis_media", id=item["id"], claim=item["claim"], duration_s=duration, frames=frames, audio=audio)
+        if not r.get("ok"): raise RuntimeError(r.get("error") or "analysis/media: not accepted")
+        return duration, len(frames)
+
+def analysis_loop():
+    while not stop_event.is_set():
+        try:
+            for item in api("analysis_claim").get("items", []):
+                try: analyze_file(item)
+                except Exception as e: api("analysis_fail", id=item["id"], claim=item["claim"], error="analysis/extract: " + sanitize(str(e))[:250])
+        except Exception as e: print("analysis:", sanitize(str(e)), flush=True)
+        stop_event.wait(30)
+
 def main():
     global FOLDER
     find_tools(); configure(); os.makedirs(BUF, exist_ok=True)
@@ -667,17 +730,20 @@ def main():
     print(f"Inverk рекордер {VERSION} запущен. Буфер: {BUF}. Окно можно свернуть; Ctrl+C — остановить.", flush=True)
     threading.Thread(target=scene_loop, daemon=True).start()
     if "--no-events" not in sys.argv: threading.Thread(target=event_loop, daemon=True).start()
+    threading.Thread(target=monitor_loop, daemon=True).start()
+    threading.Thread(target=analysis_loop, daemon=True).start()
     try:
-        while True:
+        while not stop_event.is_set():
             try:
-                mons = sync_monitors()
+                mons = dict(monitor_cache)
                 for h in api("claim").get("highlights", []):
                     try: process(h, mons.get(h["monitor_id"], {"media_mode": "recorder"}))
                     except Exception as e: api("fail", id=h["id"], claim=h["claim"], error=str(e)[:280], retryable=True)
             except Exception as e: print("ошибка цикла:", e, flush=True)
-            time.sleep(10)
+            stop_event.wait(10)
     except KeyboardInterrupt: pass
     finally:
-        for s in procs.values(): s.stop()
+        stop_event.set()
+        for s in list(procs.values()): s.stop()
 
 if __name__ == "__main__": main()

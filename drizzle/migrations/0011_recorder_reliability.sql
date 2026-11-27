@@ -1,0 +1,16 @@
+ALTER TABLE public.live_monitors ADD COLUMN enabled boolean NOT NULL DEFAULT true, ADD COLUMN archived_at timestamptz, ADD COLUMN observation text NOT NULL DEFAULT 'unknown' CHECK (observation IN ('live','offline','unknown')), ADD COLUMN observed_at timestamptz, ADD COLUMN observation_error text, ADD COLUMN poll_failures integer NOT NULL DEFAULT 0;
+UPDATE public.live_monitors SET enabled=false WHERE status='stopped';
+CREATE TABLE public.recorder_controls (user_id uuid PRIMARY KEY, paused boolean NOT NULL DEFAULT false, updated_at timestamptz NOT NULL DEFAULT now());
+GRANT SELECT ON public.recorder_controls TO authenticated; GRANT ALL ON public.recorder_controls TO service_role;
+ALTER TABLE public.recorder_controls ENABLE ROW LEVEL SECURITY;
+CREATE POLICY own_recorder_controls ON public.recorder_controls FOR SELECT TO authenticated USING (user_id=auth.uid());
+CREATE TABLE public.live_streams (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),user_id uuid NOT NULL,monitor_id uuid NOT NULL REFERENCES public.live_monitors(id),stream_key text NOT NULL,started_at timestamptz NOT NULL,ended_at timestamptz,last_observed_at timestamptz NOT NULL, UNIQUE(monitor_id,stream_key));
+GRANT SELECT ON public.live_streams TO authenticated; GRANT ALL ON public.live_streams TO service_role;
+ALTER TABLE public.live_streams ENABLE ROW LEVEL SECURITY;
+CREATE POLICY own_live_streams ON public.live_streams FOR SELECT TO authenticated USING(user_id=auth.uid());
+CREATE INDEX live_streams_owner_cursor ON public.live_streams(user_id,id);
+CREATE TABLE public.clip_analysis (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, job_id uuid NOT NULL REFERENCES public.jobs(id), output_path text NOT NULL, state text NOT NULL DEFAULT 'awaiting_media', frames jsonb, words jsonb, description text, request_id text, error text, lease uuid, lease_until timestamptz, next_attempt_at timestamptz NOT NULL DEFAULT now(),created_at timestamptz NOT NULL DEFAULT now(),analyzed_at timestamptz, UNIQUE(job_id,output_path));
+GRANT SELECT(id,user_id,job_id,output_path,state,words,description,request_id,error,created_at,analyzed_at) ON public.clip_analysis TO authenticated; GRANT ALL ON public.clip_analysis TO service_role;
+ALTER TABLE public.clip_analysis ENABLE ROW LEVEL SECURITY;
+CREATE POLICY own_clip_analysis ON public.clip_analysis FOR SELECT TO authenticated USING(user_id=auth.uid());
+CREATE INDEX clip_analysis_due ON public.clip_analysis(next_attempt_at) WHERE state IN ('queued','transcribing');

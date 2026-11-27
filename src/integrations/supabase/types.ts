@@ -14,6 +14,68 @@ export type Database = {
   }
   public: {
     Tables: {
+      clip_analysis: {
+        Row: {
+          analyzed_at: string | null
+          created_at: string
+          description: string | null
+          error: string | null
+          frames: Json | null
+          id: string
+          job_id: string
+          lease: string | null
+          lease_until: string | null
+          next_attempt_at: string
+          output_path: string
+          request_id: string | null
+          state: string
+          user_id: string
+          words: Json | null
+        }
+        Insert: {
+          analyzed_at?: string | null
+          created_at?: string
+          description?: string | null
+          error?: string | null
+          frames?: Json | null
+          id?: string
+          job_id: string
+          lease?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          output_path: string
+          request_id?: string | null
+          state?: string
+          user_id: string
+          words?: Json | null
+        }
+        Update: {
+          analyzed_at?: string | null
+          created_at?: string
+          description?: string | null
+          error?: string | null
+          frames?: Json | null
+          id?: string
+          job_id?: string
+          lease?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          output_path?: string
+          request_id?: string | null
+          state?: string
+          user_id?: string
+          words?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clip_analysis_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_events: {
         Row: {
           created_at: string
@@ -272,9 +334,11 @@ export type Database = {
       }
       live_monitors: {
         Row: {
+          archived_at: string | null
           channel_id: string | null
           channel_title: string | null
           created_at: string
+          enabled: boolean
           event_state: Json
           id: string
           input: string
@@ -286,8 +350,12 @@ export type Database = {
           media_mode: string
           messages_seen: number
           next_poll_at: string
+          observation: string
+          observation_error: string | null
+          observed_at: string | null
           page_token: string | null
           platform: string
+          poll_failures: number
           recorder_state: Json | null
           recording_url: string | null
           rights_confirmed: boolean
@@ -299,9 +367,11 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          archived_at?: string | null
           channel_id?: string | null
           channel_title?: string | null
           created_at?: string
+          enabled?: boolean
           event_state?: Json
           id?: string
           input: string
@@ -313,8 +383,12 @@ export type Database = {
           media_mode?: string
           messages_seen?: number
           next_poll_at?: string
+          observation?: string
+          observation_error?: string | null
+          observed_at?: string | null
           page_token?: string | null
           platform: string
+          poll_failures?: number
           recorder_state?: Json | null
           recording_url?: string | null
           rights_confirmed?: boolean
@@ -326,9 +400,11 @@ export type Database = {
           user_id: string
         }
         Update: {
+          archived_at?: string | null
           channel_id?: string | null
           channel_title?: string | null
           created_at?: string
+          enabled?: boolean
           event_state?: Json
           id?: string
           input?: string
@@ -340,8 +416,12 @@ export type Database = {
           media_mode?: string
           messages_seen?: number
           next_poll_at?: string
+          observation?: string
+          observation_error?: string | null
+          observed_at?: string | null
           page_token?: string | null
           platform?: string
+          poll_failures?: number
           recorder_state?: Json | null
           recording_url?: string | null
           rights_confirmed?: boolean
@@ -394,6 +474,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "live_scene_checks_monitor_id_fkey"
+            columns: ["monitor_id"]
+            isOneToOne: false
+            referencedRelation: "live_monitors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      live_streams: {
+        Row: {
+          ended_at: string | null
+          id: string
+          last_observed_at: string
+          monitor_id: string
+          started_at: string
+          stream_key: string
+          user_id: string
+        }
+        Insert: {
+          ended_at?: string | null
+          id?: string
+          last_observed_at: string
+          monitor_id: string
+          started_at: string
+          stream_key: string
+          user_id: string
+        }
+        Update: {
+          ended_at?: string | null
+          id?: string
+          last_observed_at?: string
+          monitor_id?: string
+          started_at?: string
+          stream_key?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_streams_monitor_id_fkey"
             columns: ["monitor_id"]
             isOneToOne: false
             referencedRelation: "live_monitors"
@@ -702,6 +820,24 @@ export type Database = {
           id?: string
           provider?: string
           settings?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      recorder_controls: {
+        Row: {
+          paused: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          paused?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          paused?: boolean
           updated_at?: string
           user_id?: string
         }

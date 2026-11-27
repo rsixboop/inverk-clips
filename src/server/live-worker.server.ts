@@ -1,6 +1,7 @@
 // Recorder-worker protocol: the user's own recorder (scripts/live-recorder) holds a rolling buffer of
 // streams it is authorized to record, claims due highlights, uploads a vertical MP4 to a signed URL and
 // reports completion; the server verifies the file before registering it as a finished job.
+import { captureEligible } from "@/lib/recorder-policy";
 import { CLAIM_COLUMNS } from "@/lib/live-claim";
 import { inspectMp4 } from "@/lib/mp4-inspect";
 
@@ -38,15 +39,22 @@ export async function handleWorker(request: Request): Promise<Response> {
   const { data: worker } = await db.from("live_workers").select("id,user_id").eq("token_hash", await hashToken(token)).maybeSingle();
   if (!worker) return Response.json({ error: "unauthorized" }, { status: 401 });
   await db.from("live_workers").update({ last_seen_at: new Date().toISOString() }).eq("id", worker.id);
+  if (Number(request.headers.get("content-length") ?? 0) > 10_000_000) return Response.json({ error: "body too large" }, { status: 413 });
   const body = await request.json().catch(() => ({})) as { action?: string; id?: string; claim?: string; error?: string; retryable?: boolean };
   const uid = worker.user_id;
 
+  if (String(body.action ?? "").startsWith("analysis_")) {
+    const { analysisWorker } = await import("./clip-analysis.server");
+    try { return await analysisWorker(db, uid, body as Record<string, unknown>); } catch { return Response.json({ error: "Invalid analysis request" }, { status: 400 }); }
+  }
+  const { data: control } = await db.from("recorder_controls").select("paused").eq("user_id", uid).maybeSingle();
   if (body.action === "monitors") {
-    const { data } = await db.from("live_monitors").select("id,platform,input,live_video_id,channel_id,status,media_mode,recording_url,stream_started_at")
+    const { data } = await db.from("live_monitors").select("id,platform,input,live_video_id,channel_id,status,media_mode,recording_url,stream_started_at,enabled,archived_at,rights_confirmed,observation,observed_at")
       .eq("user_id", uid).in("media_mode", ["recorder", "recording_url"]).eq("rights_confirmed", true).neq("status", "stopped");
-    return Response.json({ monitors: (data ?? []).map((m) => ({ ...m, record_url: m.media_mode === "recording_url" ? m.recording_url
+    return Response.json({ paused: control?.paused ?? false, monitors: (data ?? []).map((m) => ({ ...m, capture_eligible: captureEligible(m, control?.paused ?? false), record_url: m.media_mode === "recording_url" ? m.recording_url
       : m.platform === "twitch" ? `https://www.twitch.tv/${m.channel_id}` : m.live_video_id ? `https://www.youtube.com/watch?v=${m.live_video_id}` : null })) });
   }
+  if (control?.paused && body.action !== "status" && body.action !== "complete" && body.action !== "fail") return Response.json({ paused: true, highlights: [] });
   if (String(body.action ?? "").startsWith("folder_") || String(body.action ?? "").startsWith("candidate_")) {
     const { handleFolder } = await import("@/server/local-folder.server");
     return (await handleFolder(db, uid, body)) ?? Response.json({ error: "bad request" }, { status: 400 });
@@ -57,7 +65,7 @@ export async function handleWorker(request: Request): Promise<Response> {
     for (const m of list) {
       if (typeof m?.id !== "string") continue;
       const state = { at, version: String((body as any).version ?? "").slice(0, 20), buffer_s: Math.max(0, Math.min(86400, Number(m.buffer_s) || 0)), ready: m.ready === true,
-        error: m.error ? String(m.error).slice(0, 300) : null, quality: m.quality ? String(m.quality).slice(0, 60) : null, tools: String((body as any).tools ?? "").slice(0, 200) };
+        error: m.error ? String(m.error).slice(0, 300) : null, capture_state: String(m.capture_state ?? "").slice(0, 40), last_segment_at: m.last_segment_at && !Number.isNaN(Date.parse(m.last_segment_at)) ? m.last_segment_at : null, retry_at: m.retry_at && !Number.isNaN(Date.parse(m.retry_at)) ? m.retry_at : null, error_stage: String(m.error_stage ?? "").slice(0, 40), quality: m.quality ? String(m.quality).slice(0, 60) : null, tools: String((body as any).tools ?? "").slice(0, 200) };
       await db.from("live_monitors").update({ recorder_state: state }).eq("id", m.id).eq("user_id", uid);
     }
     return Response.json({ ok: true });
@@ -82,7 +90,11 @@ export async function handleWorker(request: Request): Promise<Response> {
   if (body.action === "event_scan") return handleEventScan(db, uid, body as any);
   if (body.action === "claim") {
     const now = new Date().toISOString();
-    const { data: due } = await db.from("live_highlights").select(CLAIM_COLUMNS).eq("user_id", uid).eq("status", "awaiting_media")
+    // A crashed worker must not hold claimed clips forever. No records are erased.
+    await db.from("live_highlights").update({ status: "awaiting_media", claim: null, claim_until: null }).eq("user_id", uid).eq("status", "claimed").lt("claim_until", now).lt("attempts", MAX_ATTEMPTS);
+    const { data: eligible } = await db.from("live_monitors").select("id").eq("user_id", uid).eq("enabled", true).is("archived_at", null).eq("rights_confirmed", true).in("media_mode", ["recorder", "recording_url"]);
+    if (!eligible?.length) return Response.json({ highlights: [] });
+    const { data: due } = await db.from("live_highlights").select(CLAIM_COLUMNS).eq("user_id", uid).in("monitor_id", eligible.map(m => m.id)).eq("status", "awaiting_media")
       .lt("end_at", new Date(Date.now() - POST_ROLL_WAIT_MS).toISOString()).or(`claim_until.is.null,claim_until.lt.${now}`).order("start_at").limit(2);
     const out = [];
     for (const h of due ?? []) {
@@ -129,6 +141,9 @@ export async function finalizeHighlight(db: Db, uid: string, h: any, source: "re
       prompt: `Live highlight · ${mon?.channel_title ?? mon?.input} · ${new Date(h.peak_at).toISOString()}`, target_seconds: Math.min(90, Math.max(10, Math.round(info.durationS || durationHint || 30))),
       output_path: h.output_path, output_mime: "video/mp4", output_bytes: file.size, finished_at: new Date().toISOString(), workflow_version: 2,
       plan: { title: `Хайлайт эфира · ${mon?.channel_title ?? mon?.input}`, live: { highlight_id: h.id, platform: mon?.platform, peak_at: h.peak_at, score: h.score, source } } }, { onConflict: "user_id,idempotency_key" }).select("id").single();
+    if (!job) return { error: "job registration failed" };
+    const { enqueueClipAnalysis } = await import("./clip-analysis.server");
+    await enqueueClipAnalysis(db, uid, job.id, h.output_path);
     await db.from("live_highlights").update({ status: "done", job_id: job?.id ?? null, claim: null, detail: `MP4 ${info.video.width}×${info.video.height}, ${(info.durationS || durationHint || 0).toFixed(1)} с${source === "tab" ? " · из вкладки Chrome" : ""}` }).eq("id", h.id);
   return { job_id: job?.id };
 }

@@ -7,7 +7,7 @@ const recordOps = ["records.list","records.create","records.update","records.del
 export async function philApi(request:Request) {
   const authorization = request.headers.get("authorization") ?? "";
   if (!/^Bearer phc_[a-f0-9]{64}$/.test(authorization)) return reply(401,{error:"Invalid token"});
-  const lookup = await db.from("live_workers").select("user_id").eq("id","90243fd9-e9a4-4660-8851-c9f9bd69eccb").eq("label","phil-read").eq("token_hash",await hashToken(authorization.slice(7))).maybeSingle();
+  const lookup = await db.from("live_workers").select("user_id").eq("label","phil-read").eq("token_hash",await hashToken(authorization.slice(7))).maybeSingle();
   if (lookup.error) return reply(503,{error:"Token lookup unavailable"});
   if (!lookup.data) return reply(401,{error:"Unknown token"});
   const owner = lookup.data.user_id;
@@ -15,6 +15,28 @@ export async function philApi(request:Request) {
   const body = await request.json().catch(()=>null);
   if (!body || typeof body.operation!=="string") return reply(400,{error:"Missing operation"});
   if (body.operation==="catalog") return reply(200,{operations,recordOps,fields,editable});
+  if (body.operation.startsWith("recorder.")) {
+    const { recorderOperation, recorderReads, recorderWrites } = await import("@/server/recorder-control.server");
+    try {
+      if (recorderReads.includes(body.operation)) return reply(200,{state:"done",result:await recorderOperation(owner,body.operation,body.payload)});
+      if (!recorderWrites.includes(body.operation)) return reply(400,{error:"Unknown recorder operation"});
+      const key=body.request_key;
+      if(typeof key!=="string"||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(key)) return reply(400,{error:"Expected UUID request_key"});
+      if(!body.payload||typeof body.payload!=="object"||Array.isArray(body.payload)||JSON.stringify(body.payload).length>64000)return reply(400,{error:"Invalid payload"});
+      const ins=await db.from("phil_app_commands").insert({owner_id:owner,request_key:key,operation:body.operation,payload:body.payload,state:"running"}).select("id").maybeSingle();
+      if(ins.error&&ins.error.code!=="23505")return reply(503,{error:"Queue unavailable"});
+      if(!ins.data) {
+        const old=await db.from("phil_app_commands").select("operation,payload,state,result").eq("owner_id",owner).eq("request_key",key).maybeSingle();
+        if(!old.data)return reply(503,{error:"Queue unavailable"});
+        if(old.data.operation!==body.operation||!sameJson(old.data.payload,body.payload))return reply(409,{error:"Request key already used"});
+        return reply(200,{request_key:key,state:old.data.state,result:old.data.result});
+      }
+      let result;let state="done";
+      try {result=await recorderOperation(owner,body.operation,body.payload,key);} catch(e){state="failed";result={error:e instanceof Error?e.message:"Recorder operation failed"};}
+      await db.from("phil_app_commands").update({state,result}).eq("id",ins.data.id).eq("owner_id",owner);
+      return reply(200,{request_key:key,state,result});
+    }catch(e){return reply(400,{error:e instanceof Error?e.message:"Recorder operation failed"});}
+  }
   if (["tiktokRead", "tiktokRefresh", "tiktokPost", "tiktokStatus"].includes(body.operation)) {
     try {
       const { bufferOperation } = await import("@/server/tiktok-buffer.server");

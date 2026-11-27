@@ -76,6 +76,8 @@ export default {
         const { drainJobs } = await import("./server/drain.server");
         waitUntil(drainJobs(8_000).catch((e) => console.error("drain failed", e)));
         const { drainLive } = await import("./server/live.server");
+        const { drainClipAnalysis } = await import("./server/clip-analysis.server");
+        waitUntil(drainClipAnalysis().catch((e) => console.error("clip analysis drain failed", e)));
         waitUntil(drainLive(25_000).catch((e) => console.error("live drain failed", e)));
         return Response.json({ accepted: true }, { status: 202 });
         }

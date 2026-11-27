@@ -1,11 +1,12 @@
 // Live highlight ingestion: YouTube Data API chat polling (needs YOUTUBE_API_KEY) and anonymous Twitch
 // IRC chat sampling (no credentials; live status via the Twitch connector when linked). Each monitor is
 // advanced under a fenced lease; spike windows are upserted as soon as their bucket closes.
+import { pollBackoff } from "@/lib/recorder-policy";
 import { emptyDetector, feed, parseLiveInput, countTwitchEmotes, countYoutubeEmotes, type ChatEvent, type DetectorState, type Window } from "@/lib/live-detect";
 
 type Admin = (typeof import("@/integrations/supabase/client.server"))["supabaseAdmin"];
 type Monitor = { id: string; user_id: string; platform: string; input: string; channel_id: string | null; channel_title: string | null; live_video_id: string | null;
-  live_chat_id: string | null; status: string; page_token: string | null; stream_started_at: string | null; stats: any; media_mode: string; messages_seen: number };
+  live_chat_id: string | null; status: string; page_token: string | null; stream_started_at: string | null; stats: any; media_mode: string; messages_seen: number; poll_failures: number; observation: string };
 type Patch = Record<string, unknown>;
 const YT = "https://www.googleapis.com/youtube/v3";
 const OFFLINE_RECHECK_MS = 15 * 60_000; // search.list costs 100 quota units; 96/day fits the default 10k quota
@@ -30,22 +31,22 @@ async function yt(path: string, q: Record<string, string>) {
 async function youtubeStep(m: Monitor): Promise<{ patch: Patch; events: ChatEvent[]; continuous: boolean }> {
   if (!m.live_chat_id) {
     const p = parseLiveInput(m.input); if (!p || p.platform !== "youtube") throw new LiveError("Не распознан YouTube-адрес", "blocked");
-    let videoId = p.videoId, channelId = p.channelId ?? m.channel_id ?? undefined, title = m.channel_title;
+    let videoId = m.status === "offline" && m.channel_id ? undefined : p.videoId, channelId = p.channelId ?? m.channel_id ?? undefined, title = m.channel_title;
     if (!videoId) {
       if (!channelId) {
-        const c = await yt("channels", { part: "snippet", forHandle: p.handle! });
+        const c = await yt("channels", { part: "snippet", forHandle: p.handle ?? "" });
         if (!c.items?.length) throw new LiveError("Канал не найден", "blocked");
         channelId = c.items[0].id; title = c.items[0].snippet?.title ?? null;
       }
-      const s = await yt("search", { part: "id", channelId: channelId!, eventType: "live", type: "video", maxResults: "1" });
+      const s = await yt("search", { part: "id", channelId: channelId ?? "", eventType: "live", type: "video", maxResults: "1" });
       videoId = s.items?.[0]?.id?.videoId;
       if (!videoId) return { patch: { status: "offline", status_detail: "Канал сейчас не в эфире; повторная проверка через 15 мин", channel_id: channelId, channel_title: title, next_poll_at: iso(OFFLINE_RECHECK_MS) }, events: [], continuous: true };
     }
     const v = await yt("videos", { part: "snippet,liveStreamingDetails", id: videoId });
     const it = v.items?.[0]; const d = it?.liveStreamingDetails;
-    if (!d?.activeLiveChatId || d.actualEndTime) return { patch: { status: "offline", status_detail: d?.actualEndTime ? "Эфир завершён" : "У видео нет активного чата эфира", live_video_id: videoId, channel_id: it?.snippet?.channelId ?? channelId, next_poll_at: iso(OFFLINE_RECHECK_MS), ...(p.videoId ? {} : {}) }, events: [], continuous: true };
-    return { patch: { status: "live", status_detail: "Эфир найден, читаю чат", live_video_id: videoId, live_chat_id: d.activeLiveChatId, channel_id: it.snippet.channelId,
-      channel_title: it.snippet.channelTitle ?? title, stream_started_at: d.actualStartTime ?? null, page_token: null, next_poll_at: iso(0) }, events: [], continuous: true };
+    if (!d?.actualStartTime || d.actualEndTime) return { patch: { status: "offline", status_detail: d?.actualEndTime ? "Эфир завершён" : "Видео не в эфире", live_video_id: videoId, channel_id: it?.snippet?.channelId ?? channelId, next_poll_at: iso(OFFLINE_RECHECK_MS), ...(p.videoId ? {} : {}) }, events: [], continuous: true };
+    return { patch: { status: "live", status_detail: "Эфир найден, читаю чат", live_video_id: videoId, live_chat_id: d.activeLiveChatId ?? null, channel_id: it.snippet.channelId,
+      channel_title: it.snippet.channelTitle ?? title, stream_started_at: d.actualStartTime ?? null, page_token: null, next_poll_at: iso(d.activeLiveChatId ? 0 : 120_000) }, events: [], continuous: true };
   }
   const q: Record<string, string> = { liveChatId: m.live_chat_id, part: "snippet,authorDetails", maxResults: "2000" };
   if (m.page_token) q["pageToken"] = m.page_token;
@@ -57,7 +58,7 @@ async function youtubeStep(m: Monitor): Promise<{ patch: Patch; events: ChatEven
     // Respect the API's pollingIntervalMillis (never faster than 5s).
     return { patch: { status: "live", status_detail: `Чат: ${events.length} сообщ. за опрос`, page_token: r.nextPageToken ?? m.page_token, next_poll_at: iso(Math.max(5000, Number(r.pollingIntervalMillis) || 5000)) }, events, continuous: true };
   } catch (e) {
-    if (e instanceof LiveError && e.kind === "offline") return { patch: { status: "offline", status_detail: e.message, live_chat_id: null, page_token: null, next_poll_at: iso(OFFLINE_RECHECK_MS) }, events: [], continuous: true };
+    if (e instanceof LiveError && e.kind === "offline") return youtubeStep({ ...m, live_chat_id: null, page_token: null });
     throw e;
   }
 }
@@ -103,8 +104,8 @@ async function twitchStep(m: Monitor, sampleMs: number): Promise<{ patch: Patch;
   const { events, joined } = await sampleTwitchChat(p.login, sampleMs);
   if (!joined) throw new LiveError("Не удалось подключиться к чату Twitch", "retry");
   const statusNote = st ? "Эфир подтверждён Twitch API" : "Статус эфира не проверен (нет подключения Twitch); чат читается анонимно";
-  return { patch: { status: "live", status_detail: `${statusNote} · выборка ${Math.round(sampleMs / 1000)} с: ${events.length} сообщ.`, channel_id: p.login, channel_title: st?.title ?? p.login,
-    ...(st?.startedAt ? { stream_started_at: st.startedAt } : {}), next_poll_at: iso(0) }, events, continuous: false };
+  return { patch: { status: st ? "live" : "resolving", observation: st ? "live" : "unknown", observation_error: st ? null : "Twitch Helix connection missing; IRC does not prove live status", status_detail: `${statusNote} · выборка ${Math.round(sampleMs / 1000)} с: ${events.length} сообщ.`, channel_id: p.login, channel_title: st?.title ?? p.login,
+    ...(st?.startedAt ? { stream_started_at: st.startedAt } : {}), next_poll_at: iso(st ? 60_000 : 120_000) }, events, continuous: false };
 }
 
 const iso = (ms: number) => new Date(Date.now() + ms).toISOString();
@@ -124,33 +125,45 @@ async function persistWindows(db: Admin, m: Monitor, started: string | null, win
 /** Advance one monitor once under a lease. Returns false when it could not be claimed. */
 export async function advanceMonitor(db: Admin, id: string, sampleMs: number): Promise<boolean> {
   const lease = crypto.randomUUID(), now = new Date().toISOString();
-  const { data: claimed } = await db.from("live_monitors").update({ lease, lease_until: iso(sampleMs + 30_000) }).eq("id", id).not("status", "eq", "stopped")
+  const { data: claimed } = await db.from("live_monitors").update({ lease, lease_until: iso(sampleMs + 30_000) }).eq("id", id).eq("enabled", true).is("archived_at", null).not("status", "eq", "stopped")
     .lte("next_poll_at", now).or(`lease_until.is.null,lease_until.lt.${now}`).select("*").maybeSingle();
   if (!claimed) return false;
   const m = claimed as unknown as Monitor;
+  const { data: control } = await db.from("recorder_controls").select("paused").eq("user_id", m.user_id).maybeSingle();
+  if (control?.paused) { await db.from("live_monitors").update({ lease: null, lease_until: null }).eq("id", id).eq("lease", lease); return false; }
   let patch: Patch;
   try {
     const step = m.platform === "youtube" ? await youtubeStep(m) : await twitchStep(m, sampleMs);
     const state: DetectorState = m.stats?.detector ?? emptyDetector();
     const windows = feed(state, step.events, Date.now(), step.continuous);
     await persistWindows(db, m, (step.patch["stream_started_at"] as string | undefined) ?? m.stream_started_at, windows);
-    patch = { ...step.patch, stats: { ...m.stats, detector: state, last_batch: step.events.length, threshold: Math.round((Math.max(8, state.mean + 3 * Math.sqrt(state.var) + 2)) * 10) / 10 },
+    patch = { observation: step.patch["observation"] ?? (step.patch["status"] === "live" ? "live" : step.patch["status"] === "offline" ? "offline" : "unknown"), observed_at: new Date().toISOString(), observation_error: null, poll_failures: 0, ...step.patch, stats: { ...m.stats, detector: state, last_batch: step.events.length, threshold: Math.round((Math.max(8, state.mean + 3 * Math.sqrt(state.var) + 2)) * 10) / 10 },
       messages_seen: m.messages_seen + step.events.length, last_poll_at: new Date().toISOString() };
   } catch (e) {
     const le = e instanceof LiveError ? e : new LiveError(String((e as Error)?.message ?? e).slice(0, 200), "retry");
-    patch = { status: le.kind === "blocked" ? "blocked" : m.status === "resolving" ? "resolving" : m.status, status_detail: le.message, next_poll_at: iso(le.kind === "blocked" ? 10 * 60_000 : 60_000), last_poll_at: new Date().toISOString() };
+    patch = { observation: "unknown", observation_error: le.message, poll_failures: m.poll_failures + 1, status: le.kind === "blocked" ? "blocked" : m.status === "resolving" ? "resolving" : m.status, status_detail: le.message, next_poll_at: iso(le.kind === "blocked" ? 15 * 60_000 : pollBackoff(m.poll_failures + 1)), last_poll_at: new Date().toISOString() };
   }
   // Fenced write: a stopped monitor or a newer lease discards this result.
-  await db.from("live_monitors").update({ ...patch, lease: null, lease_until: null }).eq("id", id).eq("lease", lease).neq("status", "stopped");
+  const { data: saved } = await db.from("live_monitors").update({ ...patch, lease: null, lease_until: null }).eq("id", id).eq("lease", lease).eq("enabled", true).is("archived_at", null).neq("status", "stopped").select("id").maybeSingle();
+  if (saved && patch["observation"] === "offline") {
+    await db.from("live_streams").update({ ended_at: now, last_observed_at: now }).eq("monitor_id", id).eq("user_id", m.user_id).is("ended_at", null);
+  } else if (saved && patch["observation"] === "live") {
+    const started = String(patch["stream_started_at"] ?? m.stream_started_at ?? now);
+    const key = String(patch["live_video_id"] ?? m.live_video_id ?? started);
+    await db.from("live_streams").update({ ended_at: now }).eq("monitor_id", id).neq("stream_key", key).is("ended_at", null);
+    await db.from("live_streams").upsert({ user_id: m.user_id, monitor_id: id, stream_key: key, started_at: started, last_observed_at: now }, { onConflict: "monitor_id,stream_key", ignoreDuplicates: true });
+    await db.from("live_streams").update({ last_observed_at: now }).eq("monitor_id", id).eq("stream_key", key);
+  }
   return true;
 }
 
 /** Background drain: advance every due monitor in parallel within the budget. */
 export async function drainLive(budgetMs: number, userId?: string) {
   const { supabaseAdmin: db } = await import("@/integrations/supabase/client.server");
-  let q = db.from("live_monitors").select("id").neq("status", "stopped").lte("next_poll_at", new Date().toISOString()).limit(8);
+  const { data: controls } = await db.from("recorder_controls").select("user_id").eq("paused", true).limit(1000);
+  let q = db.from("live_monitors").select("id,user_id").eq("enabled", true).is("archived_at", null).neq("status", "stopped").lte("next_poll_at", new Date().toISOString()).order("next_poll_at").limit(6);
   if (userId) q = q.eq("user_id", userId);
   const { data } = await q;
-  const done = await Promise.all((data ?? []).map((r) => advanceMonitor(db, r.id, Math.max(5000, budgetMs - 5000)).catch((e) => { console.error("live monitor", e); return false; })));
+  const done = await Promise.all((data ?? []).filter(r => !(controls ?? []).some(c => c.user_id === r.user_id)).map((r) => advanceMonitor(db, r.id, Math.max(5000, budgetMs - 5000)).catch((e) => { console.error("live monitor", e); return false; })));
   return done.filter(Boolean).length;
 }

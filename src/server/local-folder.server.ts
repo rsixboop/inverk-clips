@@ -79,6 +79,9 @@ export async function handleFolder(db: Db, uid: string, body: any): Promise<Resp
     const { data: job } = await db.from("jobs").upsert({ user_id: uid, idempotency_key: `local:${c.id}`, mode: "link", route: "live", audio_mode: "original", status: "completed", stage: "done",
       prompt: `Кандидат из папки · ${c.channel} · ${ranges}`, target_seconds: Math.min(90, Math.max(10, Math.round(dur))), output_path: path, output_mime: "video/mp4", output_bytes: file.size,
       finished_at: new Date().toISOString(), workflow_version: 2, plan: { title: `Кандидат · ${c.channel}`, local: { candidate_id: c.id, segments: segs, reason: c.reason, captions: c.caption_note } } }, { onConflict: "user_id,idempotency_key" }).select("id").single();
+    if (!job) return Response.json({ error: "job registration failed" }, { status: 502 });
+    const { enqueueClipAnalysis } = await import("./clip-analysis.server");
+    await enqueueClipAnalysis(db, uid, job.id, path);
     await db.from("local_candidates").update({ status: "done", output_path: path, job_id: job?.id ?? null, detail: `MP4 ${info.video.width}×${info.video.height}, ${dur.toFixed(1)} с`, updated_at: new Date().toISOString() }).eq("id", c.id);
     return Response.json({ ok: true, job_id: job?.id });
   }

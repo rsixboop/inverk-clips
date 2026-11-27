@@ -22,3 +22,4 @@
 - [ ] VPS real install check — waits on user running the installer on the Debian VPS
 - [x] Minimal Control TikTok tab + Phil Buffer reads/refresh/status/authorized ready-clip actions; real account UI/read checks and offline contracts, no real posting.
 - [ ] TikTok live metrics/status and writes — requires publishing app update, updating VPS agent to 1.2 via Control command, and clearing current Buffer HTTP 429; no real test posts authorized.
+- [ ] Recorder reliability: confirmed platform observations/transitions, owner Phil controls/cursors, pause, diagnostics, fresh clip analysis, regression checks.
