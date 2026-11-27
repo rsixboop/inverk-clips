@@ -13,22 +13,22 @@ async function execute(operation: string, data: Record<string,any>, owner: strin
     const call = actions[operation as keyof typeof actions] as (input:any)=>Promise<unknown>;
     return call({data});
   }
-  const table = String(data.table);
+  const table = String(data["table"]);
   if (!Object.hasOwn(fields, table)) throw Error("Unknown table");
   const source = db.from(table);
   let query;
   if (operation === "records.list") {
     query = source.select(fields[table]).eq("user_id",owner).order("id");
-    if (data.id) query = query.eq("id",data.id);
-    const offset = Math.max(0,Math.floor(Number(data.offset)||0));
+    if (data["id"]) query = query.eq("id",data["id"]);
+    const offset = Math.max(0,Math.floor(Number(data["offset"])||0));
     query = query.range(offset,offset+24);
-  } else if (operation === "records.delete" && data.id) {
-    query = source.delete().eq("user_id",owner).eq("id",data.id).select("id").single();
+  } else if (operation === "records.delete" && data["id"]) {
+    query = source.delete().eq("user_id",owner).eq("id",data["id"]).select("id").single();
   } else {
-    const allowed = Object.hasOwn(editable,table) ? editable[table].split(",") : [];
-    if (!data.values || !Object.keys(data.values).length || Object.keys(data.values).some(key=>!allowed.includes(key))) throw Error("Invalid columns");
-    if (operation === "records.create") query = source.insert({...data.values, user_id:owner}).select("id").single();
-    else if (operation === "records.update" && data.id) query = source.update(data.values).eq("user_id",owner).eq("id",data.id).select("id").single();
+    const allowed = Object.hasOwn(editable,table) ? (editable[table] ?? '').split(",") : [];
+    if (!data["values"] || !Object.keys(data["values"]).length || Object.keys(data["values"]).some(key=>!allowed.includes(key))) throw Error("Invalid columns");
+    if (operation === "records.create") query = source.insert({...data["values"], user_id:owner}).select("id").single();
+    else if (operation === "records.update" && data["id"]) query = source.update(data["values"]).eq("user_id",owner).eq("id",data["id"]).select("id").single();
     else throw Error("Invalid record operation");
   }
   const result = await query;

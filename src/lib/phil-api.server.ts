@@ -15,6 +15,15 @@ export async function philApi(request:Request) {
   const body = await request.json().catch(()=>null);
   if (!body || typeof body.operation!=="string") return reply(400,{error:"Missing operation"});
   if (body.operation==="catalog") return reply(200,{operations,recordOps,fields,editable});
+  if (body.operation === "records.list") {
+    const data = body.payload ?? {};
+    if (typeof data.table !== "string" || !Object.hasOwn(fields,data.table)) return reply(400,{error:"Unknown table"});
+    const offset = Math.max(0,Math.floor(Number(data.offset)||0));
+    let query = db.from(data.table).select(fields[data.table]).eq("user_id",owner).order("id");
+    if (data.id) query = query.eq("id",data.id);
+    const result = await query.range(offset,offset+24);
+    return result.error ? reply(502,{error:"Read failed"}) : reply(200,{state:"done",result:result.data});
+  }
   const key = body.request_key;
   if (typeof key!=="string" || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(key)) return reply(400,{error:"Expected UUID request_key"});
   const read = () => db.from("phil_app_commands").select("operation,payload,state,result,created_at").eq("owner_id",owner).eq("request_key",key).maybeSingle();
