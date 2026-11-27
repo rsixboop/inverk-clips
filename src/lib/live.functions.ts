@@ -60,6 +60,14 @@ export const createWorkerToken = createServerFn({ method: "POST" }).middleware([
   return { token }; // shown once; only the hash is stored
 });
 
+export const createPhilClipToken = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
+  const token = "phc_" + Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, "0")).join("");
+  const { hashToken } = await import("@/server/live-worker.server");
+  const { error } = await (await admin()).from("live_workers").insert({ user_id: context.userId, label: "phil-read", token_hash: await hashToken(token) });
+  if (error) throw new Error(error.message);
+  return { token };
+});
+
 export const highlightUrl = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const { data: h } = await context.supabase.from("live_highlights").select("output_path").eq("id", data.id).maybeSingle();
