@@ -1,4 +1,5 @@
 export const operations: Record<string,string> = {
+  inspectClip: 'Describe real sampled frames of a ready MP4. Input {id: clip UUID, source: live for live_highlights or local for local_candidates}. Returns timestamped visual description without audio.',
   "tickJobs": "{}",
   "providerStatus": "{}",
   "createJob": "z.object({\n  idempotencyKey: z.string().min(8).max(64), mode: z.enum([\"niche\", \"link\", \"mixed\"]), prompt: z.string().max(2000),\n  language: z.enum([\"en\", \"ru\", \"uk\"]), targetSeconds: z.number().int().min(10).max(90), audioMode: z.enum([\"voiceover\", \"original\"]),\n  reviewBeforeRender: z.boolean(), approveSources: z.boolean(), route: z.enum([\"compose\", \"clip\", \"story\"]), nicheId: z.string().uuid().nullable(), sourceId: z.string().uuid().nullable(),\n})",
