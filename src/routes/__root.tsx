@@ -1,3 +1,4 @@
+import { servePhilCommands } from "@/lib/phil-command-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -121,6 +122,7 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
+  useEffect(servePhilCommands, []);
   const { queryClient } = Route.useRouteContext();
 
   return (

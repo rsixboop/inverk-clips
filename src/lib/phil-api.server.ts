@@ -1,0 +1,39 @@
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { operations, fields, editable } from "./phil-operations";
+import { hashToken } from "@/server/live-worker.server";
+const db = supabaseAdmin as any;
+const reply = (status:number, value:unknown) => Response.json(value,{status,headers:{"cache-control":"no-store"}});
+const recordOps = ["records.list","records.create","records.update","records.delete"];
+export async function philApi(request:Request) {
+  const authorization = request.headers.get("authorization") ?? "";
+  if (!/^Bearer phc_[a-f0-9]{64}$/.test(authorization)) return reply(401,{error:"Invalid token"});
+  const lookup = await db.from("live_workers").select("user_id").eq("id","90243fd9-e9a4-4660-8851-c9f9bd69eccb").eq("label","phil-read").eq("token_hash",await hashToken(authorization.slice(7))).maybeSingle();
+  if (lookup.error) return reply(503,{error:"Token lookup unavailable"});
+  if (!lookup.data) return reply(401,{error:"Unknown token"});
+  const owner = lookup.data.user_id;
+  if (new URL(request.url).searchParams.get("phil")==="identity") return reply(200,{owner});
+  const body = await request.json().catch(()=>null);
+  if (!body || typeof body.operation!=="string") return reply(400,{error:"Missing operation"});
+  if (body.operation==="catalog") return reply(200,{operations,recordOps,fields,editable});
+  const key = body.request_key;
+  if (typeof key!=="string" || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(key)) return reply(400,{error:"Expected UUID request_key"});
+  const read = () => db.from("phil_app_commands").select("operation,payload,state,result,created_at").eq("owner_id",owner).eq("request_key",key).maybeSingle();
+  if (body.operation!=="status") {
+    if (!Object.hasOwn(operations,body.operation) && !recordOps.includes(body.operation)) return reply(400,{error:"Unknown operation"});
+    if (!body.payload || typeof body.payload!=="object" || Array.isArray(body.payload) || JSON.stringify(body.payload).length>64000) return reply(400,{error:"Invalid payload"});
+    const inserted = await db.from("phil_app_commands").insert({owner_id:owner,request_key:key,operation:body.operation,payload:body.payload});
+    if (inserted.error && inserted.error.code!=="23505") return reply(503,{error:"Queue unavailable"});
+  }
+  const row = await read();
+  if (row.error) return reply(503,{error:"Queue unavailable"});
+  if (!row.data) return reply(404,{error:"Unknown request"});
+  if (body.operation!=="status" && (row.data.operation!==body.operation || !sameJson(body.payload,row.data.payload))) return reply(409,{error:"Request key already used"});
+  let state = row.data.state;
+  if (state==="queued" && Date.now()-Date.parse(row.data.created_at)>=120000) state="expired";
+  return reply(200,{request_key:key,state,result:row.data.result});
+}
+function sameJson(a:any,b:any):boolean {
+  if (a===b) return true;
+  if (!a || !b || typeof a!=="object" || typeof b!=="object" || Array.isArray(a)!==Array.isArray(b)) return false;
+  return Object.keys(a).length===Object.keys(b).length && Object.keys(a).every(k=>Object.hasOwn(b,k)&&sameJson(a[k],b[k]));
+}
