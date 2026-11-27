@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentState, failedServices, parseOp, parseRedditUrl } from "./vps-ops";
+import { agentState, failedServices, parseOp, parseRedditUrl, tiktokPostSchema, tiktokIdemKey } from "./vps-ops";
 
 describe("vps ops allowlist", () => {
   it("rejects operations outside the allowlist, including publishing", () => {
@@ -18,6 +18,22 @@ describe("vps ops allowlist", () => {
   it("buffer draft needs a 24-hex channel and https video", () => {
     expect(() => parseOp("buffer.create_draft", { channel_id: "6b00651cece6dfde5f33640c", text: "x", video_url: "http://a/v.mp4" })).toThrow();
     expect(parseOp("buffer.create_draft", { channel_id: "6b00651cece6dfde5f33640c", text: "x", video_url: "https://a/v.mp4" }).op).toBe("buffer.create_draft");
+  });
+});
+
+describe("authorized ready TikTok clip", () => {
+  const input = { agent_id: "11111111-1111-4111-8111-111111111111", job_id: "22222222-2222-4222-8222-222222222222", channel_id: "6b00651cece6dfde5f33640c", authorized_channel_id: "6b00651cece6dfde5f33640c", text: "ready", mode: "draft" as const };
+  it("requires explicit matching account for publishing", () => {
+    expect(() => tiktokPostSchema.parse({ ...input, mode: "publish", authorized_channel_id: "other" })).toThrow();
+    expect(tiktokPostSchema.parse({ ...input, mode: "publish" }).channel_id).toBe("6b00651cece6dfde5f33640c");
+  });
+  it("schedule requires a future timestamp", () => {
+    expect(() => tiktokPostSchema.parse({ ...input, mode: "schedule", due_at: "2020-01-01T00:00:00Z" })).toThrow();
+    expect(() => tiktokPostSchema.parse({ ...input, mode: "schedule" })).toThrow();
+  });
+  it("same ready clip and account deduplicate across repeated calls", () => {
+    expect(tiktokIdemKey(input)).toBe("tiktok:22222222-2222-4222-8222-222222222222:6b00651cece6dfde5f33640c:draft:once");
+    expect(tiktokIdemKey({ ...input, mode: "publish" })).not.toBe(tiktokIdemKey(input));
   });
 });
 

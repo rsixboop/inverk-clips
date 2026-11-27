@@ -50,7 +50,7 @@ async function inspectClip(id:string, source:string, owner:string) {
     let speech="";
     try {
       const audio=await transcribeClip(id,source,owner);
-      speech=(audio.words??[]).map(w=>Math.round(w.start)+"s "+w.word).join(" ").slice(0,16000);
+      speech=(audio.words??[]).map((w: { start: number; word: string })=>Math.round(w.start)+"s "+w.word).join(" ").slice(0,16000);
     } catch { /* Visual evidence remains available if audio is inaccessible. */ }
     return {...await describeClipFrames({data:{frames,speech}}),duration,frames:count,audio_analyzed:Boolean(speech)};
   } finally {video.removeAttribute("src");video.load();}

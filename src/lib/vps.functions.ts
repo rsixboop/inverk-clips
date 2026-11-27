@@ -20,6 +20,7 @@ export const enqueueVpsOp = createServerFn({ method: "POST" }).middleware([requi
   .inputValidator((d: unknown) => z.object({ agent_id: z.string().uuid(), op: z.string(), args: z.unknown(), idem_key: z.string().min(8).max(120) }).parse(d))
   .handler(async ({ data, context }) => {
     const v = parseOp(data.op, data.args);
+    if (v.op === "buffer.ready_post") throw Error("Используйте tiktokPost: проверка готового клипа обязательна");
     const db = await admin();
     const { data: a } = await db.from("vps_agents").select("id").eq("id", data.agent_id).eq("user_id", context.userId).is("revoked_at", null).maybeSingle();
     if (!a) throw new Error("VPS не подключён");
@@ -28,6 +29,19 @@ export const enqueueVpsOp = createServerFn({ method: "POST" }).middleware([requi
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+export const tiktokRead = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ agent_id: z.string().uuid() }).strict().parse(d))
+  .handler(async ({ data, context }) => (await import("@/server/tiktok-buffer.server")).bufferOperation(context.userId, "tiktokRead", data));
+export const tiktokRefresh = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ agent_id: z.string().uuid() }).strict().parse(d))
+  .handler(async ({ data, context }) => (await import("@/server/tiktok-buffer.server")).bufferOperation(context.userId, "tiktokRefresh", data));
+export const tiktokStatus = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ agent_id: z.string().uuid(), command_id: z.string().uuid().optional(), post_id: z.string().regex(/^[a-f0-9]{24}$/).optional() }).strict().parse(d))
+  .handler(async ({ data, context }) => (await import("@/server/tiktok-buffer.server")).bufferOperation(context.userId, "tiktokStatus", data));
+export const tiktokPost = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => d)
+  .handler(async ({ data, context }) => (await import("@/server/tiktok-buffer.server")).bufferOperation(context.userId, "tiktokPost", data));
 
 export const revokeVpsAgent = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ agent_id: z.string().uuid() }).parse(d))

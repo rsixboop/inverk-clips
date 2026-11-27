@@ -13,6 +13,8 @@ import { VpsBadge } from "@/components/vps/VpsBadge";
 import { agentState, parseRedditUrl, type ServiceInfo } from "@/lib/vps-ops";
 import { Textarea } from "@/components/ui/textarea";
 import { createVpsPairing, enqueueVpsOp, revokeVpsAgent } from "@/lib/vps.functions";
+import { TikTokPanel } from "@/components/vps/TikTokPanel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/control")({
   head: () => ({ meta: [
@@ -53,7 +55,9 @@ function Control() {
       <div className="flex flex-wrap items-center justify-between gap-2"><h1 className="text-base font-bold">VPS · {agent.name}</h1><VpsBadge /></div>
       <p className="font-mono text-[11px] text-muted-foreground">агент {agent.agent_version || "?"} · сигнал {fmt(agent.last_seen_at)} · подтверждённое время сервера {fmt(agent.last_server_ts)} · база {(agent.info as any)?.db ? "есть" : "не найдена"} · buffer.key {(agent.info as any)?.buffer_key ? "есть" : "нет"}</p>
       {st === "stale" && <p className="text-sm text-warning">Нет сигнала больше 75 с. Команды подождут и выполнятся, когда агент вернётся.</p>}
-
+      <Tabs defaultValue="vps"><TabsList><TabsTrigger value="vps">VPS</TabsTrigger><TabsTrigger value="tiktok">TikTok</TabsTrigger></TabsList>
+      <TabsContent value="tiktok"><TikTokPanel agentId={agent.id} version={agent.agent_version} rows={mirror} /></TabsContent>
+      <TabsContent value="vps" className="space-y-4">
       <Section title="Службы и рекордер">
         {!services.length && <p className="text-sm text-muted-foreground">Агент не нашёл служб inverk*.</p>}
         {services.map(([u, s]) => (
@@ -78,7 +82,7 @@ function Control() {
       </Section>
 
       <Section title="Buffer" right={<Button size="sm" variant="secondary" onClick={() => run("buffer.refresh", {})}>Обновить</Button>}>
-        <p className="text-[11px] text-muted-foreground">Приложение ничего не публикует. Черновик в Buffer создаётся только по вашей кнопке.</p>
+        <p className="text-[11px] text-muted-foreground">Черновик в Buffer создаётся только по вашей кнопке.</p>
         {chans.length > 0 && <DraftForm chans={chans} onCreate={(channel_id, text, video_url) => run("buffer.create_draft", { channel_id, text, video_url })} />}
         {bufErr && <p className="text-sm text-destructive">{bufErr}</p>}
         {chans.map((c) => {
@@ -91,17 +95,19 @@ function Control() {
           );
         })}
       </Section>
-
+      </TabsContent></Tabs>
       <Section title="История действий">
         {!cmds.length && <p className="text-sm text-muted-foreground">Пока пусто.</p>}
         {cmds.map((c: any) => (
           <div key={c.id} className="border-b border-border py-1.5 text-xs last:border-0">
             <span className={c.status === "done" ? "text-primary" : c.status === "failed" ? "text-destructive" : "text-muted-foreground"}>{({ pending: "ждёт", sent: "выполняется", done: "готово", failed: "ошибка" } as any)[c.status] ?? c.status}</span>
-            {" · "}<span className="font-mono">{c.op}</span> {JSON.stringify(c.args) !== "{}" && <span className="text-muted-foreground">{JSON.stringify(c.args)}</span>}
+            {" · "}<span className="font-mono">{c.op}</span> {JSON.stringify(c.args) !== "{}" && <span className="break-all text-muted-foreground">{JSON.stringify(c.op === "buffer.ready_post" ? { job_id: c.args.job_id, channel_id: c.args.channel_id, mode: c.args.mode, due_at: c.args.due_at } : c.args)}</span>}
             <span className="float-right text-muted-foreground">{fmt(c.created_at)}</span>
             {c.error && <div className="text-destructive">{c.error}</div>}
             {c.result?.existing && <div className="text-muted-foreground">уже было в архиве — дубликат не создан</div>}
-            {c.result?.post_id && <div className="text-muted-foreground">черновик Buffer {c.result.post_id}</div>}
+            {c.result?.post_id && <div className="text-muted-foreground">Buffer {c.result.post_id} · {c.result.draft ? "черновик" : "отправлено, статус публикации проверьте в TikTok"}</div>}
+            {c.result?.post_id && <Button size="sm" variant="ghost" onClick={() => run("buffer.check_post", { post_id: c.result.post_id })}>Проверить Buffer</Button>}
+            {c.op === "buffer.check_post" && c.result?.status && <div className="text-muted-foreground">Фактический статус: {c.result.status} · {fmt(c.result.checked_at)}</div>}
           </div>
         ))}
       </Section>

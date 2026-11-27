@@ -15,6 +15,12 @@ export async function philApi(request:Request) {
   const body = await request.json().catch(()=>null);
   if (!body || typeof body.operation!=="string") return reply(400,{error:"Missing operation"});
   if (body.operation==="catalog") return reply(200,{operations,recordOps,fields,editable});
+  if (["tiktokRead", "tiktokRefresh", "tiktokPost", "tiktokStatus"].includes(body.operation)) {
+    try {
+      const { bufferOperation } = await import("@/server/tiktok-buffer.server");
+      return reply(200, { state: "done", result: await bufferOperation(owner, body.operation, body.payload) });
+    } catch (e) { return reply(400, { error: e instanceof Error ? e.message : "Buffer operation failed" }); }
+  }
   if (body.operation === "records.list") {
     const data = body.payload ?? {};
     if (typeof data.table !== "string" || !Object.hasOwn(fields,data.table)) return reply(400,{error:"Unknown table"});

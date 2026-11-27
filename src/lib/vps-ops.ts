@@ -5,7 +5,21 @@ const REDDIT = /^https:\/\/(?:www\.|old\.|new\.)?reddit\.com\/r\/([A-Za-z0-9_]{2
 /** Reddit post URL → studio story key (stories.id = t3_<id>). */
 export function parseRedditUrl(url: string): { community: string; id: string } | null {
   const m = REDDIT.exec(url.trim());
-  return m ? { community: m[1]!, id: `t3_${m[2]!.toLowerCase()}` } : null;
+  return m?.[1] && m[2] ? { community: m[1], id: `t3_${m[2].toLowerCase()}` } : null;
+}
+
+export const tiktokPostSchema = z.object({
+  agent_id: z.string().uuid(), job_id: z.string().uuid(), channel_id: z.string().regex(/^[a-f0-9]{24}$/),
+  authorized_channel_id: z.string(), text: z.string().min(1).max(2200),
+  mode: z.enum(["draft", "schedule", "publish"]), due_at: z.string().datetime().optional(),
+}).strict().superRefine((a, ctx) => {
+  if (a.authorized_channel_id !== a.channel_id) ctx.addIssue({ code: "custom", message: "Подтвердите выбранный аккаунт" });
+  if (a.mode === "schedule" && (!a.due_at || Date.parse(a.due_at) <= Date.now())) ctx.addIssue({ code: "custom", message: "Нужно будущее время UTC" });
+  if (a.mode !== "schedule" && a.due_at) ctx.addIssue({ code: "custom", message: "Время допустимо только для расписания" });
+});
+
+export function tiktokIdemKey(a: z.infer<typeof tiktokPostSchema>) {
+  return `tiktok:${a.job_id}:${a.channel_id}:${a.mode}:${a.due_at ?? "once"}`;
 }
 
 export const VPS_OPS = {
@@ -14,8 +28,10 @@ export const VPS_OPS = {
   "service.restart": z.object({ unit: z.string().regex(/^[a-zA-Z0-9@._-]+\.service$/).max(80) }).strict(),
   "sync.now": z.object({}).strict(),
   "buffer.refresh": z.object({}).strict(),
+  "buffer.check_post": z.object({ post_id: z.string().regex(/^[a-f0-9]{24}$/) }).strict(),
   // Explicit user click only; Buffer saves it as a draft (saveToDraft), never publishes.
   "buffer.create_draft": z.object({ channel_id: z.string().regex(/^[a-f0-9]{24}$/), text: z.string().min(1).max(2200), video_url: z.string().max(1000).regex(/^https:\/\/[^\s]+$/, "Нужна HTTPS ссылка на видео") }).strict(),
+  "buffer.ready_post": z.object({ job_id: z.string().uuid(), channel_id: z.string().regex(/^[a-f0-9]{24}$/), authorized_channel_id: z.string(), text: z.string().min(1).max(2200), video_url: z.string().url().startsWith("https://"), mode: z.enum(["draft", "schedule", "publish"]), due_at: z.string().datetime().optional() }).strict().refine((a) => a.channel_id === a.authorized_channel_id && (a.mode === "schedule" ? !!a.due_at && Date.parse(a.due_at) > Date.now() : !a.due_at), "Нужно подтверждение аккаунта и корректное время"),
 } as const;
 export type VpsOp = keyof typeof VPS_OPS;
 export const VPS_OP_NAMES = Object.keys(VPS_OPS) as VpsOp[];

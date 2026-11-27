@@ -1,4 +1,8 @@
 export const operations: Record<string,string> = {
+  tiktokRead: 'Read cached real Buffer TikTok accounts/posts/metrics with timestamps. {agent_id: UUID}. No followers API: N/A. Up to 50 posts per status per organization.',
+  tiktokRefresh: 'Queue read-only Buffer refresh on VPS. {agent_id: UUID}. Returns command_id; poll tiktokStatus. Uses existing VPS key.',
+  tiktokStatus: 'Buffer status/errors and VPS command results. {agent_id: UUID, command_id?: UUID,post_id?: 24-hex Buffer ID}. post_id queues an actual read-only Buffer post lookup; poll returned command_id without post_id. Without post_id reads cached mirror. sent = published; command done alone does not mean published.',
+  tiktokPost: 'Explicit authorized ready clip submission. {agent_id: UUID,job_id: UUID,channel_id: Buffer ID,authorized_channel_id: same ID,text: caption,mode: draft|schedule|publish,due_at?: future UTC ISO timestamp for schedule}. Requires online agent 1.2, owned completed MP4 and connected TikTok account. No automatic retry after ambiguous submission. No real test posts.',
   transcribeClip: 'Transcribe the actual audio of a ready MP4 up to 180s. Input {id: UUID, source: live or local}. Returns timestamped words from mixed game and stream audio. Speaker identity is unverified.',
   inspectClip: 'Describe real sampled frames of a ready MP4. Input {id: clip UUID, source: live for live_highlights or local for local_candidates}. Returns timestamped visual description without audio.',
   "tickJobs": "{}",

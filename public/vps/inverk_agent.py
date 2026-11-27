@@ -4,18 +4,18 @@
 - Pairs once with a one-time code from the app; token kept in /etc/inverk-agent/token (0600), never sent anywhere but the app.
 - Heartbeat every 30 s with the last server timestamp it received and systemd service states.
 - Mirrors allowlisted non-secret fields of the reddit-studio SQLite (stories+archive_text, settings id=1) and Buffer channels/drafts/queue (key read from local buffer.key, never uploaded).
-- Executes only allowlisted operations; each command id runs at most once (local state). It never publishes anything.
+- Executes only allowlisted operations; each command id runs at most once. TikTok posting requires explicit account authorization.
 Stdlib only.
 """
 import json, os, re, sqlite3, subprocess, sys, time, urllib.request, urllib.error, urllib.parse
 
-VERSION = "1.1"
+VERSION = "1.2"
 CONF_DIR = os.environ.get("INVERK_AGENT_CONF", "/etc/inverk-agent")
 STATE_DIR = os.environ.get("INVERK_AGENT_STATE", "/var/lib/inverk-agent")
 DEFAULTS = {"server": "https://inverk-clips.lovable.app", "db": "/var/lib/inverk-studio/reddit-studio.sqlite3",
             "buffer_key": "/var/lib/inverk-studio/buffer.key", "units": [], "unit_glob": "inverk*",
             "rows_per_table": 500}
-OPS = {"reddit.add", "collect.set", "service.restart", "sync.now", "buffer.refresh", "buffer.create_draft"}
+OPS = {"reddit.add", "collect.set", "service.restart", "sync.now", "buffer.refresh", "buffer.check_post", "buffer.create_draft", "buffer.ready_post"}
 
 def log(*a): print(time.strftime("%H:%M:%S"), *a, flush=True)
 
@@ -154,10 +154,13 @@ def gql(c, query, variables=None, timeout=30):
     return out["data"]
 
 Q_ORGS = "query { account { organizations { id } } }"
-Q_CHANNELS = "query Ch($id: OrganizationId!) { channels(input: {organizationId: $id}) { id name service } }"
-Q_POSTS = """query Posts($id: OrganizationId!) { posts(first: 50, input: {organizationId: $id,
-  sort: [{field: dueAt, direction: asc}, {field: createdAt, direction: desc}], filter: {status: [scheduled, draft]}}) {
-  edges { node { id text status dueAt channelId } } } }"""
+Q_CHANNELS = "query Ch($id: OrganizationId!) { channels(input: {organizationId: $id}) { id name service isDisconnected isLocked isQueuePaused } }"
+Q_CHANNEL = "query Ch($id: ChannelId!) { channel(input: {id: $id}) { id service isDisconnected isLocked } }"
+def posts_query(status, metrics=True):
+    extra = "metrics { type name value unit } metricsUpdatedAt" if metrics else ""
+    return """query Posts($id: OrganizationId!) { posts(first: 50, input: {organizationId: $id,
+      sort: [{field: createdAt, direction: desc}], filter: {status: [%s]}}) {
+      edges { node { id text status dueAt sentAt externalLink error { message } channelId assets { mimeType source status } %s } } pageInfo { hasNextPage } } }""" % (status, extra)
 M_DRAFT = """mutation Draft($input: CreatePostInput!) { createPost(input: $input) {
   ... on PostActionSuccess { post { id } } ... on MutationError { message } } }"""
 
@@ -167,16 +170,32 @@ def mirror_buffer(c, tok):
     except Exception as e: return fail(f"buffer.key: {type(e).__name__}")
     try:
         chans, posts = [], []
+        metric_note = None
+        truncated = False
         for org in gql(c, Q_ORGS)["account"]["organizations"]:
             for ch in gql(c, Q_CHANNELS, {"id": org["id"]})["channels"]:
-                chans.append({"key": ch["id"], "data": {"name": ch.get("name"), "service": ch.get("service")}})
-            for e in gql(c, Q_POSTS, {"id": org["id"]})["posts"]["edges"]:
-                n = e["node"]; posts.append({"key": n["id"], "data": {"channel": n.get("channelId"), "status": n.get("status"), "text": (n.get("text") or "")[:500], "due_at": n.get("dueAt")}})
+                chans.append({"key": ch["id"], "data": {"name": ch.get("name"), "service": ch.get("service"), "disconnected": ch.get("isDisconnected"), "locked": ch.get("isLocked"), "paused": ch.get("isQueuePaused"), "followers": None}})
+            for status in ("sent", "draft", "scheduled"):
+                try: result = gql(c, posts_query(status, metric_note is None), {"id": org["id"]})["posts"]
+                except RuntimeError as e:
+                    if not any(w in str(e).lower() for w in ("metric", "insights", "scope", "permission", "authorized")): raise
+                    metric_note = str(e)[:250]
+                    result = gql(c, posts_query(status, False), {"id": org["id"]})["posts"]
+                truncated = truncated or bool(result.get("pageInfo", {}).get("hasNextPage"))
+                for e in result.get("edges") or []:
+                    n = e["node"]
+                    metrics = [{k: m.get(k) for k in ("type", "name", "value", "unit")} for m in (n.get("metrics") or [])]
+                    assets = [{k: v.get(k) for k in ("mimeType", "source", "status")} for v in n.get("assets") or []]
+                    posts.append({"key": n["id"], "data": {"channel": n.get("channelId"), "status": n.get("status"), "text": (n.get("text") or "")[:2200], "due_at": n.get("dueAt"), "sent_at": n.get("sentAt"), "external_link": n.get("externalLink"), "error": (n.get("error") or {}).get("message"), "assets": assets, "metrics": metrics, "metrics_updated_at": n.get("metricsUpdatedAt")}})
+        for ch in chans: ch["data"].update({"metrics_note": metric_note, "truncated": truncated})
         call(c, {"action": "mirror", "kind": "buffer:channels", "rows": chans, "full": True}, tok)
         call(c, {"action": "mirror", "kind": "buffer:posts", "rows": posts, "full": True}, tok)
         call(c, {"action": "mirror", "kind": "buffer:error", "rows": [], "full": True}, tok)
-    except urllib.error.HTTPError as e: fail(f"Buffer API: HTTP {e.code}")
-    except Exception as e: fail(f"{type(e).__name__}: {e}")
+        return {"ok": True, "channels": len(chans), "posts": len(posts), "truncated": truncated, "metrics_note": metric_note}
+    except urllib.error.HTTPError as e:
+        fail(f"Buffer API: HTTP {e.code}"); raise RuntimeError(f"Buffer API: HTTP {e.code}") from None
+    except Exception as e:
+        fail(f"{type(e).__name__}: {e}"); raise
 
 def op_buffer_draft(c, a, cmd_id, st):
     """Pre-submit barrier: persist 'submitting' before the POST. If we crash or time out after that, the outcome is
@@ -185,16 +204,38 @@ def op_buffer_draft(c, a, cmd_id, st):
     sub = st.setdefault("submitting", {})
     if cmd_id in sub: raise RuntimeError("ambiguous: earlier submit had no confirmed result; check Buffer drafts before retrying")
     sub[cmd_id] = time.time(); save_state(st)
-    try: data = gql(c, M_DRAFT, {"input": {"channelId": a["channel_id"], "text": a["text"], "schedulingType": "automatic", "mode": "addToQueue",
-                                      "saveToDraft": True, "assets": [{"video": {"url": a["video_url"]}}]}}, timeout=45)
+    inp = {"channelId": a["channel_id"], "text": a["text"], "schedulingType": "automatic", "mode": "addToQueue",
+           "saveToDraft": True, "assets": [{"video": {"url": a["video_url"]}}]}
+    if a.get("mode") == "publish": inp.update({"mode": "shareNow", "saveToDraft": False})
+    elif a.get("mode") == "schedule": inp.update({"mode": "customScheduled", "saveToDraft": False, "dueAt": a["due_at"]})
+    try: data = gql(c, M_DRAFT, {"input": inp}, timeout=45)
     except urllib.error.HTTPError as e:
         if 400 <= e.code < 500: sub.pop(cmd_id, None); save_state(st); raise RuntimeError(f"Buffer rejected: HTTP {e.code}") from None
         raise RuntimeError(f"ambiguous: HTTP {e.code}; check Buffer drafts before retrying") from None
-    except RuntimeError as e: sub.pop(cmd_id, None); save_state(st); raise  # GraphQL errors = definite rejection
+    except RuntimeError as e: raise RuntimeError("ambiguous: Buffer GraphQL result unconfirmed; check Buffer before retrying") from None
     except Exception as e: raise RuntimeError(f"ambiguous: {type(e).__name__}; check Buffer drafts before retrying") from None
     r = data["createPost"]
     if r.get("message"): sub.pop(cmd_id, None); save_state(st); raise RuntimeError("Buffer: " + r["message"][:200])  # definite rejection
-    return {"post_id": r["post"]["id"], "draft": True}
+    return {"post_id": r["post"]["id"], "draft": inp["saveToDraft"], "submission": a.get("mode", "draft"), "publication_confirmed": False}
+
+def op_ready_post(c, a, cmd_id, st):
+    if a.get("authorized_channel_id") != a.get("channel_id") or a.get("mode") not in ("draft", "schedule", "publish"):
+        raise RuntimeError("explicit account authorization required")
+    if a["mode"] == "schedule":
+        from datetime import datetime, timezone
+        if datetime.fromisoformat(a.get("due_at", "").replace("Z", "+00:00")) <= datetime.now(timezone.utc): raise RuntimeError("schedule time expired")
+    ch = gql(c, Q_CHANNEL, {"id": a["channel_id"]})["channel"]
+    if not ch or ch.get("id") != a["channel_id"] or ch.get("service") != "tiktok" or ch.get("isDisconnected") is not False or ch.get("isLocked") is not False:
+        raise RuntimeError("TikTok account disconnected, locked or unavailable")
+    return op_buffer_draft(c, a, cmd_id, st)
+
+def op_check_post(c, a, tok):
+    if not re.fullmatch(r"[a-f0-9]{24}", a.get("post_id", "")): raise RuntimeError("invalid Buffer post ID")
+    n = gql(c, "query Status($id: PostId!) { post(input: {id: $id}) { id status channelId text dueAt sentAt externalLink error { message } } }", {"id": a["post_id"]})["post"]
+    if not n: raise RuntimeError("Buffer post not found")
+    data = {"channel": n.get("channelId"), "status": n.get("status"), "text": (n.get("text") or "")[:2200], "due_at": n.get("dueAt"), "sent_at": n.get("sentAt"), "external_link": n.get("externalLink"), "error": (n.get("error") or {}).get("message")}
+    # Return the actual status without replacing cached metrics/assets with a partial lookup.
+    return {"post_id": n["id"], **data, "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
 # ---------- loop ----------
 def run_op(c, tok, cmd, st):
@@ -204,10 +245,16 @@ def run_op(c, tok, cmd, st):
         if op not in OPS: raise RuntimeError("op not allowlisted")
         if op == "reddit.add": r = op_reddit_add(c, a); mirror_db(c, tok)
         elif op == "collect.set": r = op_collect_set(c, a); mirror_db(c, tok)
-        elif op == "buffer.create_draft": r = op_buffer_draft(c, a, cmd["id"], st); mirror_buffer(c, tok)
+        elif op in ("buffer.create_draft", "buffer.ready_post"):
+            r = op_ready_post(c, a, cmd["id"], st) if op == "buffer.ready_post" else op_buffer_draft(c, a, cmd["id"], st)
+            # Persist confirmed mutation before the optional refresh: a refresh failure is not a failed submit.
+            st["done"][cmd["id"]] = {"status": "done", "result": r}; save_state(st)
+            try: mirror_buffer(c, tok)
+            except Exception: r["refresh_error"] = "Buffer refresh unavailable; check actual post status later"
         elif op == "service.restart": r = op_restart(c, a)
         elif op == "sync.now": r = mirror_db(c, tok)
-        elif op == "buffer.refresh": mirror_buffer(c, tok); r = {"ok": True}
+        elif op == "buffer.refresh": r = mirror_buffer(c, tok)
+        elif op == "buffer.check_post": r = op_check_post(c, a, tok)
         out = {"status": "done", "result": r}
     except Exception as e: out = {"status": "failed", "error": f"{type(e).__name__}: {e}"[:400]}
     st["done"][cmd["id"]] = out; save_state(st); return out
