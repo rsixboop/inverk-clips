@@ -608,6 +608,39 @@ export type Database = {
         }
         Relationships: []
       }
+      phil_app_commands: {
+        Row: {
+          created_at: string
+          id: string
+          operation: string
+          owner_id: string
+          payload: Json
+          request_key: string
+          result: Json | null
+          state: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          operation: string
+          owner_id: string
+          payload: Json
+          request_key: string
+          result?: Json | null
+          state?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          operation?: string
+          owner_id?: string
+          payload?: Json
+          request_key?: string
+          result?: Json | null
+          state?: string
+        }
+        Relationships: []
+      }
       posting_queue: {
         Row: {
           account_id: string | null
@@ -929,6 +962,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      phil_claim_command: {
+        Args: never
+        Returns: {
+          id: string
+          operation: string
+          payload: Json
+        }[]
+      }
+      phil_finish_command: {
+        Args: { command_id: string; outcome: Json; success: boolean }
+        Returns: undefined
+      }
       reserve_news_overlay: {
         Args: {
           p_asset: string
