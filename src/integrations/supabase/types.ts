@@ -337,12 +337,14 @@ export type Database = {
           archived_at: string | null
           channel_id: string | null
           channel_title: string | null
+          confirmed_live_at: string | null
           created_at: string
           enabled: boolean
           event_state: Json
           id: string
           input: string
           last_poll_at: string | null
+          latest_file: Json | null
           lease: string | null
           lease_until: string | null
           live_chat_id: string | null
@@ -370,12 +372,14 @@ export type Database = {
           archived_at?: string | null
           channel_id?: string | null
           channel_title?: string | null
+          confirmed_live_at?: string | null
           created_at?: string
           enabled?: boolean
           event_state?: Json
           id?: string
           input: string
           last_poll_at?: string | null
+          latest_file?: Json | null
           lease?: string | null
           lease_until?: string | null
           live_chat_id?: string | null
@@ -403,12 +407,14 @@ export type Database = {
           archived_at?: string | null
           channel_id?: string | null
           channel_title?: string | null
+          confirmed_live_at?: string | null
           created_at?: string
           enabled?: boolean
           event_state?: Json
           id?: string
           input?: string
           last_poll_at?: string | null
+          latest_file?: Json | null
           lease?: string | null
           lease_until?: string | null
           live_chat_id?: string | null
@@ -1108,6 +1114,10 @@ export type Database = {
       }
       phil_finish_command: {
         Args: { command_id: string; outcome: Json; success: boolean }
+        Returns: undefined
+      }
+      record_stream_observation: {
+        Args: { p_at: string; p_monitor: string }
         Returns: undefined
       }
       reserve_news_overlay: {

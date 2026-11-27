@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { TabCapture } from "@/components/studio/TabCapture";
+import { recorderHealth } from "@/lib/recorder-policy";
 import { buildWindowsLauncher } from "@/lib/recorder-launcher";
 import { addMonitor, setMediaMode, revokeWorkerTokens, createPhilClipToken, createWorkerToken, highlightUrl, liveStatus, monitorAction, tickLive } from "@/lib/live.functions";
 
@@ -48,10 +49,11 @@ export function LivePanel() {
         return (
           <div key={m.id} className="border-b border-border px-4 py-3 text-sm">
             <div className="flex flex-wrap items-center gap-2"><b className="truncate">{m.channel_title || m.input}</b>
-              <span className="font-mono text-[11px] text-muted-foreground">{m.platform} · {ST[m.status] ?? m.status} · {MODES.find(([k]) => k === m.media_mode)?.[1]} · сообщений {m.messages_seen} · порог {(m.stats as any)?.threshold ?? "—"}</span>
+              <span className="font-mono text-[11px] text-muted-foreground">{m.platform} · {m.status === "stopped" ? ST["stopped"] : m.observation === "live" ? ST["live"] : m.observation === "offline" ? ST["offline"] : "статус неизвестен"} · {MODES.find(([k]) => k === m.media_mode)?.[1]} · сообщений {m.messages_seen} · порог {(m.stats as any)?.threshold ?? "—"}</span>
               <span className="ml-auto flex gap-1">{m.status === "stopped" ? <button onClick={() => act({ data: { id: m.id, action: "start" } }).then(refresh)} className="rounded border border-border px-2 text-xs">Старт</button>
                 : <button onClick={() => act({ data: { id: m.id, action: "stop" } }).then(refresh)} className="rounded border border-border px-2 text-xs">Стоп</button>}
                 <button onClick={async () => { await supabase.from("live_monitors").delete().eq("id", m.id); refresh(); }} className="rounded border border-border px-2 text-xs">Удалить</button></span></div>
+            <div className="text-[11px] text-muted-foreground">Платформа: {m.observation === "live" ? "эфир подтверждён" : m.observation === "offline" ? "не в эфире" : "статус неизвестен"} · наблюдение {m.observed_at ? new Date(m.observed_at).toLocaleString("ru") : "ещё не получено"}{m.observation_error ? ` · ${m.observation_error}` : ""}</div>
             {m.status_detail && <div className={`text-xs ${m.status === "blocked" ? "text-warning" : "text-muted-foreground"}`}>{m.status_detail}</div>}
             <div className="mt-1 font-mono text-[11px] text-muted-foreground">Экран: {(() => { const sc = scenes.filter((x) => x.monitor_id === m.id);
               if (!sc.length) return m.media_mode === "recorder" ? "ждёт кадров от рекордера" : "недоступно — кадры берутся только из записи рекордера";
@@ -90,18 +92,20 @@ export function LivePanel() {
 const ago = (iso: string) => Math.round((Date.now() - Date.parse(iso)) / 1000);
 /** In-place switch timestamp_only ⇄ recorder (peaks are kept) and the recorder's heartbeat/buffer/errors. */
 function RecorderRow({ m, rights, setRights, onSwitch }: { m: any; rights: boolean; setRights: (v: boolean) => void; onSwitch: (mode: "timestamp_only" | "recorder") => void }) {
-  const rs = m.recorder_state as null | { at: string; buffer_s: number; ready: boolean; error: string | null; version?: string; quality?: string | null };
+  const rs = m.recorder_state as null | { at: string; buffer_s: number; ready: boolean; error: string | null; version?: string; quality?: string | null; last_segment_at?: string | null; capture_state?: string; retry_at?: string | null };
   if (m.media_mode === "timestamp_only") return (
     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
       <label className="flex items-center gap-1"><input type="checkbox" checked={rights} onChange={(e) => setRights(e.target.checked)} />это мой эфир или есть разрешение на запись</label>
       <button disabled={!rights} onClick={() => onSwitch("recorder")} className="rounded border border-border px-2 disabled:opacity-50">Включить рекордер (найденные всплески сохранятся)</button>
     </div>);
   if (m.media_mode !== "recorder") return null;
-  const age = rs ? ago(rs.at) : null; const online = age != null && age < 45;
+  const age = rs ? ago(rs.at) : null; const online = recorderHealth(rs).heartbeat === "fresh";
   return (
     <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px]">
-      <span className={online ? "text-primary" : "text-warning"}>Рекордер: {rs ? (online ? `на связи (${age} с назад)` : `нет связи ${Math.round(age! / 60)} мин`) : "ещё не подключался — запустите inverk-recorder.bat"}</span>
+      <span className={online ? "text-primary" : "text-warning"}>Рекордер: {rs ? (online ? `на связи (${age} с назад)` : `нет связи ${Math.round((age ?? 0) / 60)} мин`) : "ещё не подключался — запустите inverk-recorder.bat"}</span>
       {rs && online && <span>буфер {Math.floor(rs.buffer_s / 60)}:{String(Math.floor(rs.buffer_s % 60)).padStart(2, "0")} · {rs.ready ? "готов резать (есть 20 с до всплеска)" : "набирает буфер"}{rs.quality ? ` · поток ${rs.quality}` : ""}</span>}
+      {rs?.last_segment_at && online && <span>последний сегмент {t(rs.last_segment_at)} · {rs.capture_state}</span>}
+      {!online && rs && <span className="text-warning">Служба VPS может работать без связи рекордера; проверьте журнал службы, адрес приложения и токен lrw.</span>}
       {rs?.error && <span className="text-warning">{rs.error}</span>}
       <span className="text-muted-foreground">новые всплески режутся рекордером; найденные до включения остаются таймкодами</span>
       <button onClick={() => onSwitch("timestamp_only")} className="rounded border border-border px-2 font-sans">Только таймкоды</button>

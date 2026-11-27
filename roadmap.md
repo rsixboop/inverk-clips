@@ -1,6 +1,6 @@
 # Inverk Clips roadmap
 - [x] Live highlights: YouTube Live + Twitch monitors, server chat ingestion, adaptive 10s spikes, merge, recorder worker → vertical MP4 job
-- [ ] Live YouTube verification — blocked: YOUTUBE_API_KEY not added
+- [x] Existing YouTube monitor API polling verified; key present, broadcast currently offline.
 - [ ] Live recorder MP4 end-to-end — blocked: needs user-owned live stream + recorder running
 - [x] Live new-topic short (Justice score) through normal Studio: fal image-to-video + alpha matting motion objects, exported public/gta6_new_generator_short.mp4
 - [x] Focused fresh paper-map positive path: prior 422 was completed no_media_generated, simplified object prompt succeeded, signed PNGs loaded/imported/exported in normal UI with speech alignment; no replay, $1 reservation barrier retained.
@@ -9,7 +9,7 @@
 - [x] Data model, auth, private storage, RLS
 - [x] Compose: grounded Tavily research, permitted library media, queued Atlas TTS and fal assembly
 - [x] Clip: uploaded/direct media, timed transcription, candidate moments and queued vertical processing
-- [x] Background tick every 2 min (published app only), single-worker lease
+- [x] Background tick every minute (published app only), single-worker lease
 - [x] Replace active providers with fal.ai + Atlas Cloud + Tavily; preserve legacy history without paid replay
 - [x] Verify queue adapters, content-aware selection, vertical composition and captions with regression fixtures
 - [x] Deliver one 16s original stylized gaming meme under the existing owner's account; fal tariff estimate $0.018, supervised motion-render import
@@ -19,7 +19,9 @@
 - [ ] Move compose/clip routes off fal ffmpeg-api (blocked by preflight until then)
 - [ ] Review first automatic story video and tune calibration from feedback (waiting on user review)
 - [x] VPS: paired outbound agent + /control (archive, interval, services, Buffer read-only, history)
-- [ ] VPS real install check — waits on user running the installer on the Debian VPS
+- [x] Existing VPS agent heartbeat verified; independent recorder heartbeat stale since Nov 20.
 - [x] Minimal Control TikTok tab + Phil Buffer reads/refresh/status/authorized ready-clip actions; real account UI/read checks and offline contracts, no real posting.
 - [ ] TikTok live metrics/status and writes — requires publishing app update, updating VPS agent to 1.2 via Control command, and clearing current Buffer HTTP 429; no real test posts authorized.
-- [ ] Recorder reliability: confirmed platform observations/transitions, owner Phil controls/cursors, pause, diagnostics, fresh clip analysis, regression checks.
+- [x] Recorder reliability: platform observations/transitions, server Phil controls/cursors, pause, diagnostics, fresh clip analysis and regression checks.
+- [ ] Production recorder 2.5/analysis verification — requires publishing app changes, updating the existing recorder service, valid recorder token, and Twitch Helix connection; no VPS deployment claimed.
+- [x] Skip temporary test account and its authenticated test as requested; retain offline checks.

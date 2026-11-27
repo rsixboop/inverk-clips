@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Database } from "@/integrations/supabase/types";
 import { FAL, falConfigured, falSubmit, falPoll } from "@/lib/providers/fal";
 type Db = (typeof import("@/integrations/supabase/client.server"))["supabaseAdmin"];
 export async function enqueueClipAnalysis(db:Db,owner:string,jobId:string,path:string) {
@@ -46,7 +47,7 @@ export async function drainClipAnalysis() {
   for(const r of rows??[]) {
     const {data:control}=await db.from("recorder_controls").select("paused").eq("user_id",r.user_id).maybeSingle();if(control?.paused)continue;
     const lease=crypto.randomUUID();const {data:ok}=await db.from("clip_analysis").update({lease,lease_until:new Date(Date.now()+120_000).toISOString()}).eq("id",r.id).eq("state",r.state).or(`lease_until.is.null,lease_until.lt.${now}`).select("id").maybeSingle();if(!ok)continue;
-    const save=async(p:Record<string,unknown>)=>{const {error}=await db.from("clip_analysis").update(p).eq("id",r.id).eq("lease",lease);if(error)throw Error("Analysis state persistence failed");};
+    const save=async(p:Database["public"]["Tables"]["clip_analysis"]["Update"])=>{const {error}=await db.from("clip_analysis").update(p).eq("id",r.id).eq("lease",lease);if(error)throw Error("Analysis state persistence failed");};
     try {
       if(r.state==="queued") {
         if(!falConfigured()){await save({state:"visual",error:"Speech unavailable: FAL_KEY missing",lease:null,lease_until:null});return;}

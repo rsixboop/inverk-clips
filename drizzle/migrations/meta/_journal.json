@@ -85,6 +85,20 @@
       "when": 1795816180775,
       "tag": "0011_recorder_reliability",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795818710419,
+      "tag": "0012_recorder_observation_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795818848732,
+      "tag": "0013_atomic_stream_observations",
+      "breakpoints": true
     }
   ]
 }

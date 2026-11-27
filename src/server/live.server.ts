@@ -28,7 +28,7 @@ async function yt(path: string, q: Record<string, string>) {
   return body;
 }
 
-async function youtubeStep(m: Monitor): Promise<{ patch: Patch; events: ChatEvent[]; continuous: boolean }> {
+export async function youtubeStep(m: Monitor): Promise<{ patch: Patch; events: ChatEvent[]; continuous: boolean }> {
   if (!m.live_chat_id) {
     const p = parseLiveInput(m.input); if (!p || p.platform !== "youtube") throw new LiveError("Не распознан YouTube-адрес", "blocked");
     let videoId = m.status === "offline" && m.channel_id ? undefined : p.videoId, channelId = p.channelId ?? m.channel_id ?? undefined, title = m.channel_title;
@@ -97,7 +97,7 @@ export function sampleTwitchChat(login: string, ms: number): Promise<{ events: C
   });
 }
 
-async function twitchStep(m: Monitor, sampleMs: number): Promise<{ patch: Patch; events: ChatEvent[]; continuous: boolean }> {
+export async function twitchStep(m: Monitor, sampleMs: number): Promise<{ patch: Patch; events: ChatEvent[]; continuous: boolean }> {
   const p = parseLiveInput(m.input); if (!p || p.platform !== "twitch") throw new LiveError("Не распознан Twitch-адрес", "blocked");
   const st = await twitchStatus(p.login);
   if (st && !st.live) return { patch: { status: "offline", status_detail: "Канал не в эфире (Twitch API)", channel_id: p.login, next_poll_at: iso(2 * 60_000) }, events: [], continuous: false };
@@ -143,16 +143,12 @@ export async function advanceMonitor(db: Admin, id: string, sampleMs: number): P
     const le = e instanceof LiveError ? e : new LiveError(String((e as Error)?.message ?? e).slice(0, 200), "retry");
     patch = { observation: "unknown", observation_error: le.message, poll_failures: m.poll_failures + 1, status: le.kind === "blocked" ? "blocked" : m.status === "resolving" ? "resolving" : m.status, status_detail: le.message, next_poll_at: iso(le.kind === "blocked" ? 15 * 60_000 : pollBackoff(m.poll_failures + 1)), last_poll_at: new Date().toISOString() };
   }
+  if (patch["observation"] === "live") patch["confirmed_live_at"] = patch["observed_at"];
   // Fenced write: a stopped monitor or a newer lease discards this result.
   const { data: saved } = await db.from("live_monitors").update({ ...patch, lease: null, lease_until: null }).eq("id", id).eq("lease", lease).eq("enabled", true).is("archived_at", null).neq("status", "stopped").select("id").maybeSingle();
-  if (saved && patch["observation"] === "offline") {
-    await db.from("live_streams").update({ ended_at: now, last_observed_at: now }).eq("monitor_id", id).eq("user_id", m.user_id).is("ended_at", null);
-  } else if (saved && patch["observation"] === "live") {
-    const started = String(patch["stream_started_at"] ?? m.stream_started_at ?? now);
-    const key = String(patch["live_video_id"] ?? m.live_video_id ?? started);
-    await db.from("live_streams").update({ ended_at: now }).eq("monitor_id", id).neq("stream_key", key).is("ended_at", null);
-    await db.from("live_streams").upsert({ user_id: m.user_id, monitor_id: id, stream_key: key, started_at: started, last_observed_at: now }, { onConflict: "monitor_id,stream_key", ignoreDuplicates: true });
-    await db.from("live_streams").update({ last_observed_at: now }).eq("monitor_id", id).eq("stream_key", key);
+  if (saved && typeof patch["observed_at"] === "string") {
+    const { error } = await db.rpc("record_stream_observation", { p_monitor: id, p_at: patch["observed_at"] });
+    if (error) console.error("stream observation persistence failed", error.code);
   }
   return true;
 }

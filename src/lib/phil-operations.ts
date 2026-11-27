@@ -8,7 +8,7 @@ export const operations: Record<string,string> = {
   "recorder.pause": "Server-side owner global pause; individual enabled states preserved. UUID request_key; {}.",
   "recorder.resume": "Server-side remove global pause; stopped/archived monitors stay stopped. UUID request_key; {}.",
   "recorder.streams": "Observed stream history. {cursor?:UUID,limit?:1..50,monitor_id?:UUID}; next_cursor.",
-  "recorder.clips": "Owner live clip history + analysis state. {cursor?:UUID,limit?:1..50,monitor_id?:UUID}; next_cursor. Use highlightUrl for download.",
+  "recorder.clips": "Owner clip history; source:live|local (default live). {cursor?:UUID,limit?:1..50,monitor_id?:UUID,source?:live|local}; next_cursor. Use highlightUrl for download.",
   "recorder.analysis": "Persisted fresh MP4 speech words, visual description, timestamps, provider ID and unavailable/unknown state. {job_id:UUID}.",
   tiktokRead: 'Read cached real Buffer TikTok accounts/posts/metrics with timestamps. {agent_id: UUID}. No followers API: N/A. Up to 50 posts per status per organization.',
   tiktokRefresh: 'Queue read-only Buffer refresh on VPS. {agent_id: UUID}. Returns command_id; poll tiktokStatus. Uses existing VPS key.',

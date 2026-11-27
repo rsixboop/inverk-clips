@@ -1,4 +1,4 @@
-export async function describeFrames(data: {speech?:string;frames:{second:number;jpeg:string}[]}) {
+export async function describeFrames(data: {speech?:string | undefined;frames:{second:number;jpeg:string}[]}) {
     const { generateResponse } = await import("@lovable.dev/ai-gateway");
     const reply:any = await generateResponse({
       model:"openai/gpt-6-astra",

@@ -49,7 +49,7 @@ export async function handleWorker(request: Request): Promise<Response> {
   }
   const { data: control } = await db.from("recorder_controls").select("paused").eq("user_id", uid).maybeSingle();
   if (body.action === "monitors") {
-    const { data } = await db.from("live_monitors").select("id,platform,input,live_video_id,channel_id,status,media_mode,recording_url,stream_started_at,enabled,archived_at,rights_confirmed,observation,observed_at")
+    const { data } = await db.from("live_monitors").select("id,platform,input,live_video_id,channel_id,status,media_mode,recording_url,stream_started_at,enabled,archived_at,rights_confirmed,observation,observed_at,confirmed_live_at")
       .eq("user_id", uid).in("media_mode", ["recorder", "recording_url"]).eq("rights_confirmed", true).neq("status", "stopped");
     return Response.json({ paused: control?.paused ?? false, monitors: (data ?? []).map((m) => ({ ...m, capture_eligible: captureEligible(m, control?.paused ?? false), record_url: m.media_mode === "recording_url" ? m.recording_url
       : m.platform === "twitch" ? `https://www.twitch.tv/${m.channel_id}` : m.live_video_id ? `https://www.youtube.com/watch?v=${m.live_video_id}` : null })) });
@@ -92,6 +92,7 @@ export async function handleWorker(request: Request): Promise<Response> {
     const now = new Date().toISOString();
     // A crashed worker must not hold claimed clips forever. No records are erased.
     await db.from("live_highlights").update({ status: "awaiting_media", claim: null, claim_until: null }).eq("user_id", uid).eq("status", "claimed").lt("claim_until", now).lt("attempts", MAX_ATTEMPTS);
+    await db.from("live_highlights").update({ status: "failed", claim: null, claim_until: null, detail: "Recorder claim expired after maximum attempts" }).eq("user_id", uid).eq("status", "claimed").lt("claim_until", now).gte("attempts", MAX_ATTEMPTS);
     const { data: eligible } = await db.from("live_monitors").select("id").eq("user_id", uid).eq("enabled", true).is("archived_at", null).eq("rights_confirmed", true).in("media_mode", ["recorder", "recording_url"]);
     if (!eligible?.length) return Response.json({ highlights: [] });
     const { data: due } = await db.from("live_highlights").select(CLAIM_COLUMNS).eq("user_id", uid).in("monitor_id", eligible.map(m => m.id)).eq("status", "awaiting_media")
@@ -111,7 +112,7 @@ export async function handleWorker(request: Request): Promise<Response> {
   }
   if ((body.action === "complete" || body.action === "fail") && body.id && body.claim) {
     const { data: h } = await db.from("live_highlights").select("*").eq("id", body.id).eq("user_id", uid).eq("claim", body.claim).eq("status", "claimed").maybeSingle();
-    if (!h) return Response.json({ error: "claim lost" }, { status: 409 });
+    if (!h || (h.claim_until && Date.parse(h.claim_until) < Date.now())) return Response.json({ error: "claim lost or expired" }, { status: 409 });
     if (body.action === "fail") {
       const retry = body.retryable !== false && h.attempts < MAX_ATTEMPTS;
       await db.from("live_highlights").update({ status: retry ? "awaiting_media" : "unavailable", claim: null, claim_until: null, detail: String(body.error ?? "ошибка записи").slice(0, 300) }).eq("id", h.id);
@@ -144,6 +145,7 @@ export async function finalizeHighlight(db: Db, uid: string, h: any, source: "re
     if (!job) return { error: "job registration failed" };
     const { enqueueClipAnalysis } = await import("./clip-analysis.server");
     await enqueueClipAnalysis(db, uid, job.id, h.output_path);
+    await db.from("live_monitors").update({ latest_file: { id: String(h.id), job_id: job.id, output_path: String(h.output_path), updated_at: new Date().toISOString() } }).eq("id", h.monitor_id).eq("user_id", uid);
     await db.from("live_highlights").update({ status: "done", job_id: job?.id ?? null, claim: null, detail: `MP4 ${info.video.width}×${info.video.height}, ${(info.durationS || durationHint || 0).toFixed(1)} с${source === "tab" ? " · из вкладки Chrome" : ""}` }).eq("id", h.id);
   return { job_id: job?.id };
 }

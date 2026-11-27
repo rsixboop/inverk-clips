@@ -237,7 +237,7 @@ def should_capture(m, paused=False, existing=False, now=None):
     if "capture_eligible" not in m: return m.get("status") == "live"  # old server compatibility
     if m["capture_eligible"]: return True
     # Brief unknown API observation retains an already running buffer, never starts a new one.
-    return bool(existing and m.get("observation") == "unknown" and m.get("observed_at") and (now or time.time()) - iso_ts(m["observed_at"]) < 300)
+    return bool(existing and m.get("observation") == "unknown" and m.get("confirmed_live_at") and (now or time.time()) - iso_ts(m["confirmed_live_at"]) < 300)
 
 def monitor_loop():
     while not stop_event.is_set():
