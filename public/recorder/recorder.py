@@ -645,7 +645,7 @@ def scene_loop():
             except Exception as e: print("scene error", e, flush=True)
 
 # ---------- gameplay-event scan: successive buffered frames -> vision, independent of chat ----------
-EVENT_S = int(os.environ.get("INVERK_EVENT_SECONDS", "45"))
+EVENT_S = int(os.environ.get("INVERK_EVENT_SECONDS", "15"))
 def tiny(p, t):
     """16x9 grayscale thumbnail bytes - a free local check that something actually changed on screen."""
     return subprocess.run([FFMPEG, "-loglevel", "error", "-ss", f"{t:.2f}", "-i", p, "-frames:v", "1", "-vf", "scale=16:9,format=gray", "-f", "rawvideo", "pipe:1"],
