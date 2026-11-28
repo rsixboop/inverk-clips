@@ -1,4 +1,5 @@
 export const operations: Record<string,string> = {
+  "clips.library": "Owner's automatically analyzed clip cards grouped by channel and category. Optional {cursor:UUID,limit:1..50,category,only_candidates:boolean}. Groups are page-local; follow next_cursor even after an empty filtered page. Candidate = editorial shortlist for TikTok. Use job_id with recorder.analysis or tiktokPost after selecting channel.",
   "recorder.list": "Server-side owner monitors including archives. {cursor?:UUID,limit?:1..50}; next_cursor is exclusive ID cursor.",
   "recorder.status": "Server-side owner platform observation/time/error, recorder heartbeat/fresh buffer, latest successful file, independent VPS service status. Same pagination as list.",
   "recorder.add": "Server-side idempotent add. UUID request_key; {input:Twitch/YouTube URL or handle,media_mode:timestamp_only|recorder,rights:boolean}. Recording requires rights.",

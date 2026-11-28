@@ -15,6 +15,11 @@ export async function philApi(request:Request) {
   const body = await request.json().catch(()=>null);
   if (!body || typeof body.operation!=="string") return reply(400,{error:"Missing operation"});
   if (body.operation==="catalog") return reply(200,{operations,recordOps,fields,editable});
+  if (body.operation === "clips.library") {
+    const { clipLibrary } = await import("@/server/clip-library.server");
+    try { return reply(200, {state:"done", result:await clipLibrary(owner, body.payload)}); }
+    catch (e) { return reply(400, {error:e instanceof Error ? e.message : "Clip library unavailable"}); }
+  }
   if (body.operation.startsWith("recorder.")) {
     const { recorderOperation, recorderReads, recorderWrites } = await import("@/server/recorder-control.server");
     try {

@@ -44,7 +44,7 @@ export async function bufferOperation(owner: string, operation: string, input: u
     const ch = channel?.data as Record<string, unknown> | undefined;
     if (ch?.["service"] !== "tiktok" || Date.now() - Date.parse(channel?.updated_at ?? "") > 900_000) throw Error("Обновите подключённые TikTok аккаунты");
     const { data: job } = await db.from("jobs").select("id,status,output_path,output_mime").eq("id", post.job_id).eq("user_id", owner).maybeSingle();
-    if (!job?.output_path || job.status !== "succeeded" || job.output_mime !== "video/mp4") throw Error("Нужен готовый MP4 из вашей Библиотеки");
+    if (!job?.output_path || !(["succeeded", "completed"] as string[]).includes(job.status) || job.output_mime !== "video/mp4") throw Error("Нужен готовый MP4 из вашей Библиотеки");
     const { data: signed, error } = await db.storage.from("outputs").createSignedUrl(job.output_path, 30 * 86400);
     if (error || !signed) throw Error("Не удалось открыть MP4 для Buffer");
     const { agent_id: _agent, ...rest } = post;
