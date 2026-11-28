@@ -87,6 +87,28 @@ export async function handleWorker(request: Request): Promise<Response> {
     if (b.jpeg_base64 && b.jpeg_base64.length * 0.75 > MAX_FRAME_BYTES) return Response.json({ error: "frame too large" }, { status: 413 });
     return Response.json(await recordScene(db, uid, b.monitor_id, new Date(b.frame_at), b.jpeg_base64 ?? null, b.unavailable));
   }
+  if (body.action === "speech_submit" || body.action === "speech_poll") { // rolling-buffer speech transcription (fal whisper), opt-in on the recorder
+    const b = body as unknown as { monitor_id?: string; start_at?: string; audio_base64?: string; request_id?: string };
+    const { FAL, falPoll, falSubmit } = await import("@/lib/providers/fal");
+    try {
+      if (body.action === "speech_poll") {
+        if (!b.request_id || !/^[\w-]{8,80}$/.test(b.request_id)) return Response.json({ error: "bad request_id" }, { status: 400 });
+        const r = await falPoll(FAL.whisper, b.request_id);
+        if (r.state !== "done") return Response.json({ state: "pending" });
+        const words = (r.result["chunks"] ?? []).flatMap((x: any) => typeof x.text === "string" && x.timestamp?.length === 2 && x.timestamp.every(Number.isFinite) ? [{ text: x.text, start: x.timestamp[0], end: x.timestamp[1] }] : []);
+        return Response.json({ state: "done", words });
+      }
+      if (!b.monitor_id || !b.start_at || Number.isNaN(Date.parse(b.start_at)) || !b.audio_base64) return Response.json({ error: "bad speech chunk" }, { status: 400 });
+      if (b.audio_base64.length * 0.75 > 2_000_000) return Response.json({ error: "audio too large" }, { status: 413 });
+      const path = `${uid}/speech/${b.monitor_id.replace(/[^\w-]/g, "")}/${Date.parse(b.start_at)}.m4a`;
+      const up = await db.storage.from("outputs").upload(path, Buffer.from(b.audio_base64, "base64"), { contentType: "audio/mp4", upsert: true });
+      if (up.error) return Response.json({ error: `storage: ${up.error.message}` }, { status: 500 });
+      const signed = await db.storage.from("outputs").createSignedUrl(path, 3600);
+      if (signed.error) return Response.json({ error: "sign failed" }, { status: 500 });
+      const rid = await falSubmit(FAL.whisper, { audio_url: signed.data.signedUrl, task: "transcribe", chunk_level: "segment", diarize: false });
+      return Response.json({ request_id: rid });
+    } catch (e) { return Response.json({ error: `speech: ${(e as Error).message.slice(0, 160)}` }, { status: 502 }); }
+  }
   if (body.action === "event_scan") return handleEventScan(db, uid, body as any);
   if (body.action === "claim") {
     const now = new Date().toISOString();

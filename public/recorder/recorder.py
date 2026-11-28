@@ -685,6 +685,45 @@ def event_loop():
             except Exception as e: print("event error", sanitize(str(e)), flush=True)
 
 
+# ---------- speech from the rolling buffer (opt-in: --speech) -> speech_select windows ----------
+SPEECH_S = int(os.environ.get("INVERK_SPEECH_SECONDS", "60"))
+speech = {}  # mid -> {"done": set(seg paths), "utts": [Utterance]} ; in memory, buffer-bounded
+
+def speech_chunk(segs, done):
+    """New finished segments (newest one may still be written) -> (paths, wall_start). Pure, unit-tested."""
+    new = [x for x in segs[:-1] if x[0] not in done][-6:]
+    return ([p for p, _, _ in new], new[0][1]) if new else ([], None)
+
+def speech_audio(paths):
+    lst = "concat:" + "|".join(paths)
+    return subprocess.run([FFMPEG, "-loglevel", "error", "-i", lst, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "aac", "-b:a", "32k", "-f", "adts", "pipe:1"],
+                          capture_output=True, timeout=60, creationflags=NOWIN).stdout
+
+def speech_loop():
+    from speech_select import Utterance, stitch_utterances, score_windows
+    while True:
+        time.sleep(SPEECH_S)
+        for mid, s in list(procs.items()):
+            try:
+                st = speech.setdefault(mid, {"done": set(), "utts": []})
+                paths, w0 = speech_chunk(all_segments(mid), st["done"])
+                if not s.alive() or not paths: continue
+                aud = speech_audio(paths); st["done"].update(paths)
+                if not aud: continue
+                r = api("speech_submit", monitor_id=mid, start_at=utc(w0), audio_base64=base64.b64encode(aud).decode())
+                if r.get("error"): print("речь:", r["error"], flush=True); continue
+                for _ in range(24):
+                    time.sleep(5); t = api("speech_poll", request_id=r["request_id"])
+                    if t.get("state") == "done": break
+                else: print("речь: распознавание не успело", flush=True); continue
+                st["utts"] = stitch_utterances(st["utts"] + [Utterance(w0 + x["start"], w0 + x["end"], x["text"]) for x in t.get("words", [])])
+                horizon = time.time() - KEEP_S; st["done"] &= {p for p, _, _ in all_segments(mid)}
+                st["utts"] = [u for u in st["utts"] if u.end > horizon]
+                best = score_windows(st["utts"])[:1]
+                if best: print("речь", mid[:8], f"лучшее окно {utc(best[0].start)} score={best[0].score:.2f}", ", ".join(best[0].reasons), flush=True)
+            except Exception as e: print("speech error", sanitize(str(e)), flush=True)
+
+
 def analyze_file(item):
     """Decode the exact finalized stored MP4, not an older buffer frame; bounded independent analysis thread."""
     with tempfile.TemporaryDirectory() as t:
@@ -732,6 +771,7 @@ def main():
     if "--no-events" not in sys.argv: threading.Thread(target=event_loop, daemon=True).start()
     threading.Thread(target=monitor_loop, daemon=True).start()
     threading.Thread(target=analysis_loop, daemon=True).start()
+    if "--speech" in sys.argv: sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); threading.Thread(target=speech_loop, daemon=True).start()
     try:
         while not stop_event.is_set():
             try:

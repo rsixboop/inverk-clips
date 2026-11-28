@@ -13,6 +13,7 @@ export function buildWindowsLauncher(appUrl: string) {
     'if not exist "%DIR%" mkdir "%DIR%"',
     "echo Загружаю актуальный рекордер...",
     'curl.exe -fsSL "%INVERK_URL%/recorder/recorder.py" -o "%DIR%\\recorder.py.new" && move /y "%DIR%\\recorder.py.new" "%DIR%\\recorder.py" >nul',
+    'curl.exe -fsSL "%INVERK_URL%/recorder/speech_select.py" -o "%DIR%\\speech_select.py"',
     'if not exist "%DIR%\\recorder.py" goto :nofile',
     'set "PY="',
     "py -3 -c \"import sys\" >nul 2>&1 && set \"PY=py -3\"",

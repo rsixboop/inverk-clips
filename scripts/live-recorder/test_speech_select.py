@@ -11,4 +11,11 @@ class T(unittest.TestCase):
         w = score_windows(hot)[0]; self.assertIsNotNone(pick_cut(w))
         dull = [U(0, 2, "ok driving now")]
         self.assertIsNone(pick_cut(score_windows(dull)[0]))
+    def test_speech_chunk_skips_active_and_done(self):
+        sys.argv = ["x"]; import importlib.util as iu
+        spec = iu.spec_from_file_location("rec", os.path.join(os.path.dirname(__file__), "../../public/recorder/recorder.py")); rec = iu.module_from_spec(spec); spec.loader.exec_module(rec)
+        segs = [("a", 0, 10), ("b", 10, 20), ("c", 20, 30)]
+        self.assertEqual(rec.speech_chunk(segs, set()), (["a", "b"], 0))
+        self.assertEqual(rec.speech_chunk(segs, {"a"}), (["b"], 10))
+        self.assertEqual(rec.speech_chunk(segs, {"a", "b"}), ([], None))
 unittest.main()
