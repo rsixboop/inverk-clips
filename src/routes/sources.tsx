@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -22,13 +23,19 @@ const KIND: Record<string, string> = { upload: "Загруженный файл"
 function Sources() {
   const qc = useQueryClient();
   const list = useSources(true).data ?? [];
+  const [tab, setTab] = useState<"live" | "folder" | "files">("live");
   async function setPerm(id: string, permission: string) {
     const { error } = await supabase.from("sources").update({ permission }).eq("id", id);
     if (error) toast.error(error.message); else qc.invalidateQueries({ queryKey: ["sources"] });
   }
   return (
-    <div className="space-y-4"><LivePanel /><FolderPanel />
-    <div className="panel overflow-hidden">
+    <div className="space-y-3">
+    <div className="flex gap-1 rounded-md border border-border bg-muted p-1 text-sm">
+      {([["live", "Эфиры"], ["folder", "Папка записей"], ["files", `Файлы (${list.length})`]] as const).map(([k, l]) => (
+        <button key={k} onClick={() => setTab(k)} className={`flex-1 rounded px-3 py-1.5 ${tab === k ? "bg-primary font-semibold text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>{l}</button>))}
+    </div>
+    {tab === "live" && <LivePanel />}{tab === "folder" && <FolderPanel />}
+    {tab === "files" && <div className="panel overflow-hidden">
       <div className="border-b border-border px-4 py-3"><h1 className="text-base font-bold">Источники</h1>
         <p className="text-xs text-muted-foreground">Используйте только своё видео или материалы с лицензией/разрешением. Источник без указанных прав блокирует рендер.</p></div>
       {!list.length && <p className="p-4 text-sm text-muted-foreground">Источников нет — добавьте их в Студии.</p>}
@@ -45,6 +52,6 @@ function Sources() {
           </select>
         </div>
       ))}
-    </div></div>
+    </div>}</div>
   );
 }

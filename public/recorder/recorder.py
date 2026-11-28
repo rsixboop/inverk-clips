@@ -342,6 +342,8 @@ def window_frames(inp_args, seek, at):
     return out
 
 def validate(h, inp_args, seek, dur):
+    if h.get("trigger") == "speech":  # spoken-moment path: AI judge already picked setup→reaction from the buffer transcript
+        return True, "выбрано — " + (h.get("reason") or "момент по речи")
     if h.get("trigger") == "vision":  # gameplay-event path: already confirmed by vision on successive frames; chat is not required
         c = h.get("chatters") or 0
         return True, "выбрано — " + (h.get("reason") or "игровое событие") + (f"; чат: {c} уникальных" if c else "; чат: тихо")
@@ -365,7 +367,8 @@ def cut_highlight(h, mon, out, check=False):
         if h.get("offset_s") is None: raise NoMedia("Неизвестно время начала эфира — нельзя найти момент в записи")
         dur = iso_ts(h["end_at"]) - iso_ts(h["start_at"]) + PRE + POST
         return render(["-i", mon["record_url"]], max(0, float(h["offset_s"]) - PRE), dur, out)
-    paths, seek, dur = plan_cut(all_segments(h["monitor_id"]), iso_ts(h["start_at"]), iso_ts(h["end_at"]))
+    pad = (2, 3) if h.get("trigger") == "speech" else (PRE, POST)  # speech span already runs setup→reaction
+    paths, seek, dur = plan_cut(all_segments(h["monitor_id"]), iso_ts(h["start_at"]), iso_ts(h["end_at"]), *pad)
     lst = out + ".txt"
     with open(lst, "w", encoding="utf-8") as f: f.write("".join("file '{}'\n".format(p.replace("\\", "/").replace("'", "'\\''")) for p in paths))
     inp = ["-f", "concat", "-safe", "0", "-i", lst]
@@ -645,7 +648,7 @@ def scene_loop():
             except Exception as e: print("scene error", e, flush=True)
 
 # ---------- gameplay-event scan: successive buffered frames -> vision, independent of chat ----------
-EVENT_S = int(os.environ.get("INVERK_EVENT_SECONDS", "45"))
+EVENT_S = int(os.environ.get("INVERK_EVENT_SECONDS", "15"))
 def tiny(p, t):
     """16x9 grayscale thumbnail bytes - a free local check that something actually changed on screen."""
     return subprocess.run([FFMPEG, "-loglevel", "error", "-ss", f"{t:.2f}", "-i", p, "-frames:v", "1", "-vf", "scale=16:9,format=gray", "-f", "rawvideo", "pipe:1"],
@@ -683,6 +686,60 @@ def event_loop():
                 r = event_scan(mid, segs)
                 if r and r.get("keep"): print("игровое событие", mid[:8], r.get("reason"), flush=True)
             except Exception as e: print("event error", sanitize(str(e)), flush=True)
+
+
+# ---------- speech from the rolling buffer (opt-in: --speech) -> speech_select windows ----------
+SPEECH_S = int(os.environ.get("INVERK_SPEECH_SECONDS", "60"))
+speech = {}  # mid -> {"done": set(seg paths), "utts": [Utterance]} ; in memory, buffer-bounded
+
+def speech_chunk(segs, done):
+    """New finished segments (newest one may still be written) -> (paths, wall_start). Pure, unit-tested."""
+    new = [x for x in segs[:-1] if x[0] not in done][-6:]
+    return ([p for p, _, _ in new], new[0][1]) if new else ([], None)
+
+def speech_audio(paths):
+    lst = "concat:" + "|".join(paths)
+    return subprocess.run([FFMPEG, "-loglevel", "error", "-i", lst, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "aac", "-b:a", "32k", "-f", "adts", "pipe:1"],
+                          capture_output=True, timeout=60, creationflags=NOWIN).stdout
+
+JUDGE_MIN = float(os.environ.get("INVERK_SPEECH_PREFILTER", "0.3"))
+def judge_pick(windows, judged, min_score=JUDGE_MIN):
+    """Cheap heuristic prefilter: best unjudged window worth a paid AI call, or None. Pure, unit-tested."""
+    for w in windows:
+        if w.score >= min_score and int(w.start) not in judged: return w
+    return None
+
+def speech_judge(mid, st, windows):
+    w = judge_pick(windows, st.setdefault("judged", set()))
+    if not w: return None
+    st["judged"].add(int(w.start)); t0 = w.start
+    r = api("speech_judge", monitor_id=mid, base_at=utc(t0), lines=[{"t": round(u.start - t0, 1), "text": u.text} for u in w.utterances])
+    if r.get("keep"): r["start"] += t0; r["end"] += t0
+    return r
+
+def speech_loop():
+    from speech_select import Utterance, stitch_utterances, score_windows
+    while True:
+        time.sleep(SPEECH_S)
+        for mid, s in list(procs.items()):
+            try:
+                st = speech.setdefault(mid, {"done": set(), "utts": []})
+                paths, w0 = speech_chunk(all_segments(mid), st["done"])
+                if not s.alive() or not paths: continue
+                aud = speech_audio(paths); st["done"].update(paths)
+                if not aud: continue
+                r = api("speech_submit", monitor_id=mid, start_at=utc(w0), audio_base64=base64.b64encode(aud).decode())
+                if r.get("error"): print("речь:", r["error"], flush=True); continue
+                for _ in range(24):
+                    time.sleep(5); t = api("speech_poll", request_id=r["request_id"])
+                    if t.get("state") == "done": break
+                else: print("речь: распознавание не успело", flush=True); continue
+                st["utts"] = stitch_utterances(st["utts"] + [Utterance(w0 + x["start"], w0 + x["end"], x["text"]) for x in t.get("words", [])])
+                horizon = time.time() - KEEP_S; st["done"] &= {p for p, _, _ in all_segments(mid)}
+                st["utts"] = [u for u in st["utts"] if u.end > horizon]
+                v = speech_judge(mid, st, score_windows(st["utts"]))
+                if v: print("речь", mid[:8], "ИИ:", ("клип в очереди" if v.get("queued") else f"клип не поставлен ({v.get('why', '')})") if v.get("keep") else "мимо", f"{utc(v.get('start', 0))}–{utc(v.get('end', 0))}" if v.get("keep") else "", v.get("reason", v.get("error", "")), flush=True)
+            except Exception as e: print("speech error", sanitize(str(e)), flush=True)
 
 
 def analyze_file(item):
@@ -732,6 +789,7 @@ def main():
     if "--no-events" not in sys.argv: threading.Thread(target=event_loop, daemon=True).start()
     threading.Thread(target=monitor_loop, daemon=True).start()
     threading.Thread(target=analysis_loop, daemon=True).start()
+    if "--speech" in sys.argv: sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); threading.Thread(target=speech_loop, daemon=True).start()
     try:
         while not stop_event.is_set():
             try:
