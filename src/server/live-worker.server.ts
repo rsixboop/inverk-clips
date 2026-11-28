@@ -199,7 +199,15 @@ async function handleEventScan(db: Db, uid: string, b: { monitor_id?: string; fr
   await db.from("live_monitors").update({ event_state: next }).eq("id", mon.id);
   let ev; try { ev = await L.classifyEventSafe(frames); } catch (e) { ev = null; }
   if (!ev) return Response.json({ event: null, reason: "кадры: проверка недоступна" });
+  const marks = (ev.kills ?? []).filter(k => times[k.frame] !== undefined);
   const d = L.decideEvent(ev, next, now);
+  if (marks.length) {
+    d.keep = true;
+    d.reason = marks.map(k => {
+      const at = new Date(times[k.frame]!).toISOString();
+      return `Dota 2 · ${at} · ${k.killer} → ${k.victim} · ${k.fight} · ${k.impact}/5 · ${k.evidence}`;
+    }).join("\n");
+  }
   if (!d.keep) return Response.json({ keep: false, reason: d.reason, event: ev });
   next = L.rememberEvent(next, ev.label, new Date(now).toISOString());
   await db.from("live_monitors").update({ event_state: next }).eq("id", mon.id);

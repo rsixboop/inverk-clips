@@ -73,3 +73,22 @@ def pick_cut(w: Window, min_score: float = 0.6, pre: float = 3.0, post: float = 
     s = max(buffer_start, w.utterances[0].start - pre)
     e = min(w.utterances[-1].end + post, s + max_len)
     return (s, e)
+
+
+def unseen_dialogue(window, history):
+    """Return one fresh dialogue run with at most one preceding setup line."""
+    lines, keys = [], []
+    setup = None
+    for u in window.utterances:
+        key = (round(u.start, 1), round(u.end, 1), " ".join(u.text.casefold().split()))
+        state = history.get(key)
+        if state:
+            if keys:
+                break
+            setup = u if state == "reviewed" else None
+            continue
+        if not keys and setup and u.start - setup.end <= 5:
+            lines.append(setup)
+        lines.append(u)
+        keys.append(key)
+    return lines, keys

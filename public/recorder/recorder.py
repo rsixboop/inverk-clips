@@ -11,7 +11,7 @@ Windows: start inverk-recorder.bat (downloaded from Sources). Others: INVERK_URL
 """
 import base64, calendar, csv, getpass, glob, json, os, shutil, subprocess, sys, tempfile, threading, time, urllib.error, urllib.request
 
-VERSION = "2.5"
+VERSION = "2.6"
 SEG, PRE, POST = 10, 20, 15
 KEEP_S = int(os.environ.get("INVERK_KEEP_SECONDS", "900"))
 IS_WIN = os.name == "nt"
@@ -76,7 +76,7 @@ def find_tools():
     if not STREAMLINK: sys.exit("Не найден Streamlink. Установите: https://streamlink.github.io/install.html (или INVERK_STREAMLINK=путь\\streamlink.exe).")
     print(f"ffmpeg: {FFMPEG}\nstreamlink: {STREAMLINK}", flush=True)
 
-UA = "inverk-recorder/2.5"  # default Python-urllib UA is blocked (403 / error code 1010) by the storage edge
+UA = "inverk-recorder/2.6"  # default Python-urllib UA is blocked (403 / error code 1010) by the storage edge
 _re_tok = __import__("re").compile(r"token=[^&\s\"']+")
 def api(action, **kw):
     req = urllib.request.Request(f"{APP}/api/public/live/worker", data=json.dumps({"action": action, **kw}).encode(),
@@ -710,11 +710,35 @@ def judge_pick(windows, judged, min_score=JUDGE_MIN):
     return None
 
 def speech_judge(mid, st, windows):
-    w = judge_pick(windows, st.setdefault("judged", set()))
-    if not w: return None
-    st["judged"].add(int(w.start)); t0 = w.start
-    r = api("speech_judge", monitor_id=mid, base_at=utc(t0), lines=[{"t": round(u.start - t0, 1), "text": u.text} for u in w.utterances])
-    if r.get("keep"): r["start"] += t0; r["end"] += t0
+    from speech_select import unseen_dialogue
+    history = st.setdefault("reviewed", {})
+    cutoff = time.time() - KEEP_S
+    for key in list(history):
+        if key[1] < cutoff:
+            del history[key]
+    # Evaluate only runs of fresh utterances; a previously rejected setup can
+    # return as context when a genuinely new reply arrives.
+    for w in windows:
+        if w.score < JUDGE_MIN:
+            return None
+        lines, keys = unseen_dialogue(w, history)
+        if keys:
+            break
+    else:
+        return None
+    t0 = lines[0].start
+    r = api("speech_judge", monitor_id=mid, base_at=utc(t0), lines=[{"t": round(u.start - t0, 1), "text": u.text} for u in lines])
+    if "keep" not in r:
+        return r
+    for key in keys:
+        history[key] = "reviewed"
+    if r.get("keep"):
+        r["start"] += t0
+        r["end"] += t0
+        if r.get("queued") or r.get("why") == "уже есть клип этого момента":
+            for key in keys:
+                if key[0] < r["end"] and key[1] > r["start"]:
+                    history[key] = "accepted"
     return r
 
 def speech_loop():

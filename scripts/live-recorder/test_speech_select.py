@@ -33,4 +33,14 @@ class T(unittest.TestCase):
         segs = [(f"s{i}", i * 10.0, i * 10.0 + 10) for i in range(10)]
         paths, seek, dur = rec.plan_cut(segs, 40, 60, 2, 3)
         self.assertAlmostEqual(dur, 25)
+    def test_dialogue_drift_and_new_reply(self):
+        from speech_select import unseen_dialogue, Window
+        setup, reply = U(10, 14, "А потом?"), U(15, 17, "А потом выиграли.")
+        _, keys = unseen_dialogue(Window(9, 20, [setup]), {})
+        history = dict.fromkeys(keys, "reviewed")
+        self.assertEqual(unseen_dialogue(Window(8, 19, [setup]), history)[1], [])
+        self.assertEqual(unseen_dialogue(Window(9, 20, [setup, reply]), history)[0], [setup, reply])
+        history[keys[0]] = "accepted"
+        self.assertEqual(unseen_dialogue(Window(9, 20, [setup, reply]), history)[0], [reply])
+
 unittest.main()

@@ -1,7 +1,8 @@
 // Gameplay-event highlights: pure rules for vision-detected story beats / novel interactions, independent of chat.
 // Server: src/server/live-worker.server.ts action "event_scan"; recorder: event_loop in public/recorder/recorder.py.
 export type EventKind = "story_beat" | "novel_interaction" | "routine" | "none" | "unavailable";
-export type GameEvent = { kind: EventKind; label: string; confidence: number; setup?: string | undefined; payoff?: string | undefined };
+export type KillMark = { frame: number; victim: string; killer: string; fight: string; impact: number; evidence: string };
+export type GameEvent = { kills?: KillMark[]; kind: EventKind; label: string; confidence: number; setup?: string | undefined; payoff?: string | undefined };
 export type EventState = { scan_at?: string; events?: { label: string; at: string }[] };
 
 export const EVENT_MIN_CONFIDENCE = 0.75;
@@ -14,7 +15,20 @@ export function normalizeEvent(raw: any): GameEvent {
   const kind = KINDS.includes(raw?.kind) ? raw.kind : "none";
   const c = Math.max(0, Math.min(1, Number(raw?.confidence) || 0));
   const s = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
-  return { kind, label: s(raw?.label, 80), confidence: c, setup: s(raw?.setup, 120) || undefined, payoff: s(raw?.payoff, 120) || undefined };
+  const kills: KillMark[] = [];
+  if (raw?.game === "Dota 2" && raw.replay === false && Array.isArray(raw.kills)) {
+    for (const k of raw.kills.slice(0, 8)) {
+      if (!Number.isInteger(k?.frame) || k.frame < 1 || k.frame > 2 ||
+          !Number.isFinite(k.confidence) || k.confidence < 0.85 ||
+          !s(k.victim, 40) || !s(k.evidence, 100) ||
+          !Number.isInteger(k.impact) || k.impact < 1 || k.impact > 5) continue;
+      if (kills.some(mark => mark.victim === k.victim)) continue;
+      kills.push({ frame: k.frame, killer: s(k.killer, 40) || "не установлен",
+        victim: s(k.victim, 40), fight: ["соло", "командный"].includes(k.fight) ? k.fight : "неясно",
+        impact: k.impact, evidence: s(k.evidence, 100) });
+    }
+  }
+  return { kills, kind, label: s(raw?.label, 80), confidence: c, setup: s(raw?.setup, 120) || undefined, payoff: s(raw?.payoff, 120) || undefined };
 }
 
 const words = (t: string) => new Set(t.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, " ").split(/\s+/).filter((w) => w.length > 2));
