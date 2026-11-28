@@ -1,0 +1,1 @@
+- Speech selection from the recorder buffer lives as pure functions in `public/recorder/speech_select.py` (stitch → window score → cut); not wired into recorder.py yet. Next: per-segment background transcription, LLM judge replacing `heuristic_score`, claim/upload via existing live_highlights path.
