@@ -52,3 +52,4 @@ use the editor.
 - Before showing a generated video as finished, inspect representative frames, check narration-to-visual alignment for the intro, middle and CTA, listen or explicitly disclose if audio listening was unavailable, run ffprobe and full decode, and compare against prior version. If a cut misses the meaning, repair that cut before publishing.
 - The script `scripts/news-render/render-storage212.py` demonstrates narration-timed visual reveals and original music for the 212 GB topic. Its story content is **topic-specific**: do not reuse its lines/images for unrelated news.
 - Live highlights: see `src/server/AGENTS.md`.
+- Speech selection from the recorder buffer lives as pure functions in `public/recorder/speech_select.py` (stitch → window score → cut); not wired into recorder.py yet. Next: per-segment background transcription, LLM judge replacing `heuristic_score`, claim/upload via existing live_highlights path.
