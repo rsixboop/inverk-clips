@@ -25,4 +25,12 @@ class T(unittest.TestCase):
         ws = [Window(0, 30, score=0.1), Window(10, 40, score=0.5)]
         self.assertEqual(rec.judge_pick(ws, set()).start, 10)
         self.assertIsNone(rec.judge_pick(ws, {10}))
+    def test_speech_highlight_bypasses_chat_and_pads_tightly(self):
+        import importlib.util as iu
+        spec = iu.spec_from_file_location("rec3", os.path.join(os.path.dirname(__file__), "../../public/recorder/recorder.py")); rec = iu.module_from_spec(spec); spec.loader.exec_module(rec)
+        ok, why = rec.validate({"trigger": "speech", "chatters": 0, "reason": "речь: шутка"}, [], 0, 0)
+        self.assertTrue(ok); self.assertIn("шутка", why)
+        segs = [(f"s{i}", i * 10.0, i * 10.0 + 10) for i in range(10)]
+        paths, seek, dur = rec.plan_cut(segs, 40, 60, 2, 3)
+        self.assertAlmostEqual(dur, 25)
 unittest.main()

@@ -91,7 +91,11 @@ export async function handleWorker(request: Request): Promise<Response> {
     const lines = Array.isArray((body as any).lines) ? (body as any).lines.slice(0, 200).flatMap((l: any) => Number.isFinite(l?.t) && typeof l?.text === "string" ? [{ t: l.t, text: l.text.slice(0, 300) }] : []) : [];
     if (lines.length < 2) return Response.json({ keep: false, reason: "мало речи" });
     const { judgeDialogue } = await import("@/server/live-vision.server");
-    try { return Response.json(await judgeDialogue(lines)); } catch (e) { return Response.json({ error: `judge: ${(e as Error).message.slice(0, 160)}` }, { status: 502 }); }
+    try {
+      const v = await judgeDialogue(lines); const base = Date.parse(String((body as any).base_at ?? ""));
+      if (!v.keep || Number.isNaN(base) || typeof (body as any).monitor_id !== "string") return Response.json(v);
+      return Response.json({ ...v, ...(await queueSpeechHighlight(db, uid, (body as any).monitor_id, base + v.start * 1000, base + v.end * 1000, v)) });
+    } catch (e) { return Response.json({ error: `judge: ${(e as Error).message.slice(0, 160)}` }, { status: 502 }); }
   }
   if (body.action === "speech_submit" || body.action === "speech_poll") { // rolling-buffer speech transcription (fal whisper), opt-in on the recorder
     const b = body as unknown as { monitor_id?: string; start_at?: string; audio_base64?: string; request_id?: string };
@@ -213,4 +217,19 @@ async function handleEventScan(db: Db, uid: string, b: { monitor_id?: string; fr
   const { data: h } = await db.from("live_highlights").insert({ user_id: uid, monitor_id: mon.id, start_at: start.toISOString(), end_at: end.toISOString(),
     peak_at: new Date((start.getTime() + end.getTime()) / 2).toISOString(), chatters, emotes: 0, score, status: "awaiting_media", trigger: "vision", reason: d.reason, detail }).select("id").single();
   return Response.json({ keep: true, highlight_id: h?.id, reason: d.reason });
+}
+
+/** A spoken moment the AI judge kept → one awaiting_media highlight the recorder's normal claim/cut/upload path serves. */
+async function queueSpeechHighlight(db: Db, uid: string, monitorId: string, startMs: number, endMs: number, v: { score: number; reason: string; setup: string; payoff: string }) {
+  const { data: mon } = await db.from("live_monitors").select("id").eq("id", monitorId).eq("user_id", uid).maybeSingle();
+  if (!mon) return { queued: false, why: "monitor not found" };
+  const lo = new Date(startMs - 10_000).toISOString(), hi = new Date(endMs + 10_000).toISOString();
+  const { data: near } = await db.from("live_highlights").select("id,status").eq("monitor_id", mon.id).eq("user_id", uid).lte("start_at", hi).gte("end_at", lo);
+  if ((near ?? []).some((h) => h.status === "claimed" || h.status === "done")) return { queued: false, why: "уже есть клип этого момента" };
+  const reason = `речь: ${v.reason}`.slice(0, 300), detail = `завязка: ${v.setup} · реакция: ${v.payoff}`.slice(0, 300);
+  const pending = (near ?? []).find((h) => h.status === "awaiting_media" || h.status === "timestamp_only");
+  if (pending) { await db.from("live_highlights").update({ trigger: "speech", reason, detail, score: v.score }).eq("id", pending.id); return { queued: true, highlight_id: pending.id, merged: true }; }
+  const { data: h, error } = await db.from("live_highlights").insert({ user_id: uid, monitor_id: mon.id, start_at: new Date(startMs).toISOString(), end_at: new Date(endMs).toISOString(),
+    peak_at: new Date((startMs + endMs) / 2).toISOString(), chatters: 0, emotes: 0, score: v.score, status: "awaiting_media", trigger: "speech", reason, detail }).select("id").single();
+  return error ? { queued: false, why: error.message.slice(0, 160) } : { queued: true, highlight_id: h?.id };
 }

@@ -342,6 +342,8 @@ def window_frames(inp_args, seek, at):
     return out
 
 def validate(h, inp_args, seek, dur):
+    if h.get("trigger") == "speech":  # spoken-moment path: AI judge already picked setup→reaction from the buffer transcript
+        return True, "выбрано — " + (h.get("reason") or "момент по речи")
     if h.get("trigger") == "vision":  # gameplay-event path: already confirmed by vision on successive frames; chat is not required
         c = h.get("chatters") or 0
         return True, "выбрано — " + (h.get("reason") or "игровое событие") + (f"; чат: {c} уникальных" if c else "; чат: тихо")
@@ -365,7 +367,8 @@ def cut_highlight(h, mon, out, check=False):
         if h.get("offset_s") is None: raise NoMedia("Неизвестно время начала эфира — нельзя найти момент в записи")
         dur = iso_ts(h["end_at"]) - iso_ts(h["start_at"]) + PRE + POST
         return render(["-i", mon["record_url"]], max(0, float(h["offset_s"]) - PRE), dur, out)
-    paths, seek, dur = plan_cut(all_segments(h["monitor_id"]), iso_ts(h["start_at"]), iso_ts(h["end_at"]))
+    pad = (2, 3) if h.get("trigger") == "speech" else (PRE, POST)  # speech span already runs setup→reaction
+    paths, seek, dur = plan_cut(all_segments(h["monitor_id"]), iso_ts(h["start_at"]), iso_ts(h["end_at"]), *pad)
     lst = out + ".txt"
     with open(lst, "w", encoding="utf-8") as f: f.write("".join("file '{}'\n".format(p.replace("\\", "/").replace("'", "'\\''")) for p in paths))
     inp = ["-f", "concat", "-safe", "0", "-i", lst]
@@ -710,7 +713,7 @@ def speech_judge(mid, st, windows):
     w = judge_pick(windows, st.setdefault("judged", set()))
     if not w: return None
     st["judged"].add(int(w.start)); t0 = w.start
-    r = api("speech_judge", monitor_id=mid, lines=[{"t": round(u.start - t0, 1), "text": u.text} for u in w.utterances])
+    r = api("speech_judge", monitor_id=mid, base_at=utc(t0), lines=[{"t": round(u.start - t0, 1), "text": u.text} for u in w.utterances])
     if r.get("keep"): r["start"] += t0; r["end"] += t0
     return r
 
@@ -735,7 +738,7 @@ def speech_loop():
                 horizon = time.time() - KEEP_S; st["done"] &= {p for p, _, _ in all_segments(mid)}
                 st["utts"] = [u for u in st["utts"] if u.end > horizon]
                 v = speech_judge(mid, st, score_windows(st["utts"]))
-                if v: print("речь", mid[:8], "ИИ:", "клип" if v.get("keep") else "мимо", f"{utc(v.get('start', 0))}–{utc(v.get('end', 0))}" if v.get("keep") else "", v.get("reason", v.get("error", "")), flush=True)
+                if v: print("речь", mid[:8], "ИИ:", ("клип в очереди" if v.get("queued") else f"клип не поставлен ({v.get('why', '')})") if v.get("keep") else "мимо", f"{utc(v.get('start', 0))}–{utc(v.get('end', 0))}" if v.get("keep") else "", v.get("reason", v.get("error", "")), flush=True)
             except Exception as e: print("speech error", sanitize(str(e)), flush=True)
 
 
