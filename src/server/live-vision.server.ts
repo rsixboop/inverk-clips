@@ -41,3 +41,17 @@ export async function classifyEvent(frames: string[]) {
   const m = out?.match(/\{[\s\S]*\}/); if (!m) throw new Error("vision: no JSON");
   return normalizeEvent(JSON.parse(m[0]));
 }
+
+/** Speech judge: stitched dialogue lines from the rolling buffer → is there a clip-worthy spoken moment? */
+export async function judgeDialogue(lines: { t: number; text: string }[]) {
+  const { normalizeSpeechJudge } = await import("@/lib/speech-judge");
+  const { generateResponse } = await import("@lovable.dev/ai-gateway");
+  const transcript = lines.map((l) => `[${l.t.toFixed(1)}] ${l.text}`).join("\n").slice(0, 6000);
+  const r: any = await generateResponse({ model: "openai/gpt-6-astra",
+    instructions: "You read a timestamped transcript (seconds) of a live game stream, Russian or English, streamer and possibly game dialogue mixed. Decide whether it contains a moment worth a short vertical clip: a funny exchange, a strong reaction to something surprising, a conflict, a punchline, a dramatic story beat. Reject routine commentary, reading chat, greetings, ads/donation reading, silence, filler. Be conservative. Pick the tightest span from setup (what triggers it) to reaction/payoff, 8-60 s. Return strict JSON {\"keep\": boolean, \"score\": 0..1, \"start\": seconds, \"end\": seconds, \"reason\": short concrete reason in Russian, \"setup\": short, \"payoff\": short}.",
+    input: [{ role: "user", content: [{ type: "input_text", text: transcript }] }] } as any);
+  let out: string | undefined = r?.output_text;
+  if (!out) for (const o of r?.output ?? []) for (const x of o?.content ?? []) if (x?.type === "output_text") out = x.text;
+  const m = out?.match(/\{[\s\S]*\}/); if (!m) throw new Error("judge: no JSON");
+  return normalizeSpeechJudge(JSON.parse(m[0]), lines);
+}

@@ -699,6 +699,21 @@ def speech_audio(paths):
     return subprocess.run([FFMPEG, "-loglevel", "error", "-i", lst, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "aac", "-b:a", "32k", "-f", "adts", "pipe:1"],
                           capture_output=True, timeout=60, creationflags=NOWIN).stdout
 
+JUDGE_MIN = float(os.environ.get("INVERK_SPEECH_PREFILTER", "0.3"))
+def judge_pick(windows, judged, min_score=JUDGE_MIN):
+    """Cheap heuristic prefilter: best unjudged window worth a paid AI call, or None. Pure, unit-tested."""
+    for w in windows:
+        if w.score >= min_score and int(w.start) not in judged: return w
+    return None
+
+def speech_judge(mid, st, windows):
+    w = judge_pick(windows, st.setdefault("judged", set()))
+    if not w: return None
+    st["judged"].add(int(w.start)); t0 = w.start
+    r = api("speech_judge", monitor_id=mid, lines=[{"t": round(u.start - t0, 1), "text": u.text} for u in w.utterances])
+    if r.get("keep"): r["start"] += t0; r["end"] += t0
+    return r
+
 def speech_loop():
     from speech_select import Utterance, stitch_utterances, score_windows
     while True:
@@ -719,8 +734,8 @@ def speech_loop():
                 st["utts"] = stitch_utterances(st["utts"] + [Utterance(w0 + x["start"], w0 + x["end"], x["text"]) for x in t.get("words", [])])
                 horizon = time.time() - KEEP_S; st["done"] &= {p for p, _, _ in all_segments(mid)}
                 st["utts"] = [u for u in st["utts"] if u.end > horizon]
-                best = score_windows(st["utts"])[:1]
-                if best: print("речь", mid[:8], f"лучшее окно {utc(best[0].start)} score={best[0].score:.2f}", ", ".join(best[0].reasons), flush=True)
+                v = speech_judge(mid, st, score_windows(st["utts"]))
+                if v: print("речь", mid[:8], "ИИ:", "клип" if v.get("keep") else "мимо", f"{utc(v.get('start', 0))}–{utc(v.get('end', 0))}" if v.get("keep") else "", v.get("reason", v.get("error", "")), flush=True)
             except Exception as e: print("speech error", sanitize(str(e)), flush=True)
 
 

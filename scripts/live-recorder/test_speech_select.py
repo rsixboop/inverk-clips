@@ -18,4 +18,11 @@ class T(unittest.TestCase):
         self.assertEqual(rec.speech_chunk(segs, set()), (["a", "b"], 0))
         self.assertEqual(rec.speech_chunk(segs, {"a"}), (["b"], 10))
         self.assertEqual(rec.speech_chunk(segs, {"a", "b"}), ([], None))
+    def test_judge_prefilter(self):
+        from speech_select import Window
+        import importlib.util as iu
+        spec = iu.spec_from_file_location("rec2", os.path.join(os.path.dirname(__file__), "../../public/recorder/recorder.py")); rec = iu.module_from_spec(spec); spec.loader.exec_module(rec)
+        ws = [Window(0, 30, score=0.1), Window(10, 40, score=0.5)]
+        self.assertEqual(rec.judge_pick(ws, set()).start, 10)
+        self.assertIsNone(rec.judge_pick(ws, {10}))
 unittest.main()

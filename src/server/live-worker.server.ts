@@ -87,6 +87,12 @@ export async function handleWorker(request: Request): Promise<Response> {
     if (b.jpeg_base64 && b.jpeg_base64.length * 0.75 > MAX_FRAME_BYTES) return Response.json({ error: "frame too large" }, { status: 413 });
     return Response.json(await recordScene(db, uid, b.monitor_id, new Date(b.frame_at), b.jpeg_base64 ?? null, b.unavailable));
   }
+  if (body.action === "speech_judge") {
+    const lines = Array.isArray((body as any).lines) ? (body as any).lines.slice(0, 200).flatMap((l: any) => Number.isFinite(l?.t) && typeof l?.text === "string" ? [{ t: l.t, text: l.text.slice(0, 300) }] : []) : [];
+    if (lines.length < 2) return Response.json({ keep: false, reason: "мало речи" });
+    const { judgeDialogue } = await import("@/server/live-vision.server");
+    try { return Response.json(await judgeDialogue(lines)); } catch (e) { return Response.json({ error: `judge: ${(e as Error).message.slice(0, 160)}` }, { status: 502 }); }
+  }
   if (body.action === "speech_submit" || body.action === "speech_poll") { // rolling-buffer speech transcription (fal whisper), opt-in on the recorder
     const b = body as unknown as { monitor_id?: string; start_at?: string; audio_base64?: string; request_id?: string };
     const { FAL, falPoll, falSubmit } = await import("@/lib/providers/fal");
